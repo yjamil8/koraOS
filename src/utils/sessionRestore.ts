@@ -10,7 +10,6 @@ import {
   switchSession,
 } from '../bootstrap/state.js'
 import { clearSystemPromptSections } from '../constants/systemPromptSections.js'
-import { restoreCostStateForSession } from '../cost-tracker.js'
 import type { AppState } from '../state/AppState.js'
 import type { AgentColorName } from '../tools/AgentTool/agentColorManager.js'
 import {
@@ -60,6 +59,7 @@ import {
   getCurrentWorktreeSession,
   restoreWorktreeSession,
 } from './worktree.js'
+const restoreCostStateForSession = (_sessionId: string): void => {}
 
 type ResumeResult = {
   messages?: Message[]

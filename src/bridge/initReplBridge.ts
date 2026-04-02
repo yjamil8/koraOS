@@ -18,12 +18,7 @@ import { hostname } from 'os'
 import { getOriginalCwd, getSessionId } from '../bootstrap/state.js'
 import type { SDKMessage } from '../entrypoints/agentSdkTypes.js'
 import type { SDKControlResponse } from '../entrypoints/sdk/controlTypes.js'
-import { getFeatureValue_CACHED_WITH_REFRESH } from '../services/analytics/growthbook.js'
 import { getOrganizationUUID } from '../services/oauth/client.js'
-import {
-  isPolicyAllowed,
-  waitForPolicyLimitsToLoad,
-} from '../services/policyLimits/index.js'
 import type { Message } from '../types/message.js'
 import {
   checkAndRefreshOAuthTokenIfNeeded,
@@ -150,16 +145,7 @@ export async function initReplBridge(
     return null
   }
 
-  // 3. Check organization policy — remote control may be disabled
-  await waitForPolicyLimitsToLoad()
-  if (!isPolicyAllowed('allow_remote_control')) {
-    logBridgeSkip(
-      'policy_denied',
-      '[bridge:repl] Skipping: allow_remote_control policy not allowed',
-    )
-    onStateChange?.('failed', "disabled by your organization's policy")
-    return null
-  }
+  // 3. Policy gates removed in local daemon mode.
 
   // When CLAUDE_BRIDGE_OAUTH_TOKEN is set (ant-only local dev), the bridge
   // uses that token directly via getBridgeAccessToken() — keychain state is
@@ -377,11 +363,7 @@ export async function initReplBridge(
     return userMessageCount >= 3
   }
 
-  const initialHistoryCap = getFeatureValue_CACHED_WITH_REFRESH(
-    'tengu_bridge_initial_history_cap',
-    200,
-    5 * 60 * 1000,
-  )
+  const initialHistoryCap = 200
 
   // Fetch orgUUID before the v1/v2 branch — both paths need it. v1 for
   // environment registration; v2 for archive (which lives at the compat

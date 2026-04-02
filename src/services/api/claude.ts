@@ -93,7 +93,6 @@ import {
   type SystemPrompt,
 } from '../../utils/systemPromptType.js'
 import { tokenCountFromLastAPIResponse } from '../../utils/tokens.js'
-import { getDynamicConfig_BLOCKS_ON_INIT } from '../analytics/growthbook.js'
 import {
   currentLimits,
   extractQuotaStatusFromError,
@@ -143,8 +142,6 @@ import {
 } from 'src/constants/betas.js'
 import type { QuerySource } from 'src/constants/querySource.js'
 import type { Notification } from 'src/context/notifications.js'
-import { addToTotalSessionCost } from 'src/cost-tracker.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
 import type { AgentId } from 'src/types/ids.js'
 import {
   ADVISOR_TOOL_INSTRUCTIONS,
@@ -214,11 +211,18 @@ import {
   type LLMRequestNewContext,
   startLLMRequestSpan,
 } from '../../utils/telemetry/sessionTracing.js'
+const addToTotalSessionCost = (cost: number): number => cost
+const getFeatureValue_CACHED_MAY_BE_STALE = <T>(
+  _flag: string,
+  fallback: T,
+): T => fallback
+const getDynamicConfig_BLOCKS_ON_INIT = <T>(
+  _flag: string,
+  fallback: T,
+): T => fallback
+type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS = string
+const logEvent = (..._args: unknown[]): void => {}
 /* eslint-enable @typescript-eslint/no-require-imports */
-import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-  logEvent,
-} from '../analytics/index.js'
 import {
   consumePendingCacheEdits,
   getPinnedCacheEdits,
@@ -296,20 +300,6 @@ export function getExtraBodyParams(betaHeaders?: string[]): JsonObject {
         { level: 'error' },
       )
     }
-  }
-
-  // Anti-distillation: send fake_tools opt-in for 1P CLI only
-  if (
-    feature('ANTI_DISTILLATION_CC')
-      ? process.env.CLAUDE_CODE_ENTRYPOINT === 'cli' &&
-        shouldIncludeFirstPartyOnlyBetas() &&
-        getFeatureValue_CACHED_MAY_BE_STALE(
-          'tengu_anti_distill_fake_tool_injection',
-          false,
-        )
-      : false
-  ) {
-    result.anti_distillation = ['fake_tools']
   }
 
   // Handle beta headers if provided

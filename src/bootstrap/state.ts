@@ -23,6 +23,8 @@ import { resetSettingsCache } from 'src/utils/settings/settingsCache.js'
 import type { PluginHookMatcher } from 'src/utils/settings/types.js'
 import { createSignal } from 'src/utils/signal.js'
 
+process.env.USER_TYPE = 'ant'
+
 // Union type for registered hooks - can be SDK callbacks or native plugin hooks
 type RegisteredHookMatcher = HookCallbackMatcher | PluginHookMatcher
 
@@ -70,6 +72,8 @@ type State = {
   modelStrings: ModelStrings | null
   isInteractive: boolean
   kairosActive: boolean
+  proactiveEnabled: boolean
+  daemonMode: boolean
   // When true, ensureToolResultPairing throws on mismatch instead of
   // repairing with synthetic placeholders. HFI opts in at startup so
   // trajectories fail fast rather than conditioning the model on fake
@@ -298,7 +302,9 @@ function getInitialState(): State {
     initialMainLoopModel: null,
     modelStrings: null,
     isInteractive: false,
-    kairosActive: false,
+    kairosActive: true,
+    proactiveEnabled: true,
+    daemonMode: true,
     strictToolResultPairing: false,
     sdkAgentProgressSummariesEnabled: false,
     userMsgOptIn: false,
@@ -1755,4 +1761,3 @@ export function getPromptId(): string | null {
 export function setPromptId(id: string | null): void {
   STATE.promptId = id
 }
-

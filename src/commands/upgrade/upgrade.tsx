@@ -5,7 +5,6 @@ import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import { getClaudeAIOAuthTokens, isClaudeAISubscriber } from '../../utils/auth.js';
 import { openBrowser } from '../../utils/browser.js';
 import { logError } from '../../utils/log.js';
-import { Login } from '../login/login.js';
 export async function call(onDone: LocalJSXCommandOnDone, context: LocalJSXCommandContext): Promise<React.ReactNode | null> {
   try {
     // Check if user is already on the highest Max plan (20x)
@@ -25,10 +24,8 @@ export async function call(onDone: LocalJSXCommandOnDone, context: LocalJSXComma
     }
     const url = 'https://claude.ai/upgrade/max';
     await openBrowser(url);
-    return <Login startingMessage={'Starting new login following /upgrade. Exit with Ctrl-C to use existing account.'} onDone={success => {
-      context.onChangeAPIKey();
-      onDone(success ? 'Login successful' : 'Login interrupted');
-    }} />;
+    setTimeout(onDone, 0, 'Upgrade page opened in browser.');
+    return null;
   } catch (error) {
     logError(error as Error);
     setTimeout(onDone, 0, 'Failed to open browser. Please visit https://claude.ai/upgrade/max to upgrade.');

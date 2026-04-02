@@ -24,11 +24,6 @@ import {
   LOCAL_COMMAND_STDERR_TAG,
   LOCAL_COMMAND_STDOUT_TAG,
 } from './constants/xml.js'
-import {
-  getModelUsage,
-  getTotalAPIDuration,
-  getTotalCost,
-} from './cost-tracker.js'
 import type { CanUseToolFn } from './hooks/useCanUseTool.js'
 import { loadMemoryPrompt } from './memdir/memdir.js'
 import { hasAutoMemPathOverride } from './memdir/paths.js'
@@ -81,6 +76,9 @@ import {
   shouldEnableThinkingByDefault,
   type ThinkingConfig,
 } from './utils/thinking.js'
+const getModelUsage = (): Record<string, unknown> => ({})
+const getTotalAPIDuration = (): number => 0
+const getTotalCost = (): number => 0
 
 // Lazy: MessageSelector.tsx pulls React/ink; only needed for message filtering at query time
 /* eslint-disable @typescript-eslint/no-require-imports */

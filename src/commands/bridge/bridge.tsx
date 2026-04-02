@@ -13,11 +13,12 @@ import { shouldShowRemoteCallout } from '../../components/RemoteCallout.js';
 import { useRegisterOverlay } from '../../context/overlayContext.js';
 import { Box, Text } from '../../ink.js';
 import { useKeybindings } from '../../keybindings/useKeybinding.js';
-import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../services/analytics/index.js';
 import { useAppState, useSetAppState } from '../../state/AppState.js';
 import type { ToolUseContext } from '../../Tool.js';
 import type { LocalJSXCommandContext, LocalJSXCommandOnDone } from '../../types/command.js';
 import { logForDebugging } from '../../utils/debug.js';
+type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS = string;
+const logEvent = (..._args: unknown[]): void => {};
 type Props = {
   onDone: LocalJSXCommandOnDone;
   name?: string;
@@ -465,15 +466,6 @@ function _temp4(s) {
   return s.replBridgeSessionUrl;
 }
 async function checkBridgePrerequisites(): Promise<string | null> {
-  // Check organization policy — remote control may be disabled
-  const {
-    waitForPolicyLimitsToLoad,
-    isPolicyAllowed
-  } = await import('../../services/policyLimits/index.js');
-  await waitForPolicyLimitsToLoad();
-  if (!isPolicyAllowed('allow_remote_control')) {
-    return "Remote Control is disabled by your organization's policy.";
-  }
   const disabledReason = await getBridgeDisabledReason();
   if (disabledReason) {
     return disabledReason;

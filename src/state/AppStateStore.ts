@@ -114,6 +114,8 @@ export type AppState = DeepImmutable<{
   // Single source of truth - computed once in main.tsx before option
   // mutation, consumers read this instead of re-calling isAssistantMode().
   kairosEnabled: boolean
+  proactiveEnabled: boolean
+  daemonMode: boolean
   // Remote session URL for --remote mode (shown in footer indicator)
   remoteSessionUrl: string | undefined
   // Remote session WS state (`claude assistant` viewer). 'connected' means the
@@ -480,7 +482,9 @@ export function getDefaultAppState(): AppState {
     coordinatorTaskIndex: -1,
     viewSelectionMode: 'none',
     footerSelection: null,
-    kairosEnabled: false,
+    kairosEnabled: true,
+    proactiveEnabled: true,
+    daemonMode: true,
     remoteSessionUrl: undefined,
     remoteConnectionStatus: 'connecting',
     remoteBackgroundTaskCount: 0,

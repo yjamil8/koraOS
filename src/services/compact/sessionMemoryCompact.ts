@@ -22,7 +22,6 @@ import {
   getDynamicConfig_BLOCKS_ON_INIT,
   getFeatureValue_CACHED_MAY_BE_STALE,
 } from '../analytics/growthbook.js'
-import { logEvent } from '../analytics/index.js'
 import {
   isSessionMemoryEmpty,
   truncateSessionMemoryForCompact,

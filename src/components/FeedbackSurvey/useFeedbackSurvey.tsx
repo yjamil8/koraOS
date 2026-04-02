@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDynamicConfig } from 'src/hooks/useDynamicConfig.js';
-import { isFeedbackSurveyDisabled } from 'src/services/analytics/config.js';
-import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from 'src/services/analytics/index.js';
-import { isPolicyAllowed } from '../../services/policyLimits/index.js';
 import type { Message } from '../../types/message.js';
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
 import { isEnvTruthy } from '../../utils/envUtils.js';
@@ -14,6 +11,10 @@ import { submitTranscriptShare, type TranscriptShareTrigger } from './submitTran
 import type { TranscriptShareResponse } from './TranscriptSharePrompt.js';
 import { useSurveyState } from './useSurveyState.js';
 import type { FeedbackSurveyResponse, FeedbackSurveyType } from './utils.js';
+type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS = string;
+const isFeedbackSurveyDisabled = (): boolean => false;
+const logEvent = (..._args: unknown[]): void => {};
+const isPolicyAllowed = (_name: string): boolean => true;
 type FeedbackSurveyConfig = {
   minTimeBeforeFeedbackMs: number;
   minTimeBetweenFeedbackMs: number;

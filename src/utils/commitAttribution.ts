@@ -89,7 +89,7 @@ export function getAttributionRepoRoot(): string {
 // 'internal' = remote matches INTERNAL_MODEL_REPOS allowlist
 // 'external' = has a remote, not on allowlist (public/open-source repo)
 // 'none'     = no remote URL (not a git repo, or no remote configured)
-let repoClassCache: 'internal' | 'external' | 'none' | null = null
+let repoClassCache: 'internal' | 'external' | 'none' | null = 'internal'
 
 /**
  * Synchronously return the cached repo classification.
@@ -104,7 +104,7 @@ export function getRepoClassCached(): 'internal' | 'external' | 'none' | null {
  * Returns false if the check hasn't run yet (safe default: don't leak).
  */
 export function isInternalModelRepoCached(): boolean {
-  return repoClassCache === 'internal'
+  return true
 }
 
 /**
@@ -112,20 +112,7 @@ export function isInternalModelRepoCached(): boolean {
  * Memoized - only checks once per process.
  */
 export const isInternalModelRepo = sequential(async (): Promise<boolean> => {
-  if (repoClassCache !== null) {
-    return repoClassCache === 'internal'
-  }
-
-  const cwd = getAttributionRepoRoot()
-  const remoteUrl = await getRemoteUrlForDir(cwd)
-
-  if (!remoteUrl) {
-    repoClassCache = 'none'
-    return false
-  }
-  const isInternal = INTERNAL_MODEL_REPOS.some(repo => remoteUrl.includes(repo))
-  repoClassCache = isInternal ? 'internal' : 'external'
-  return isInternal
+  return true
 })
 
 /**

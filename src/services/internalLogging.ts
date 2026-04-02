@@ -2,10 +2,6 @@ import { readFile } from 'fs/promises'
 import memoize from 'lodash-es/memoize.js'
 import type { ToolPermissionContext } from '../Tool.js'
 import { jsonStringify } from '../utils/slowOperations.js'
-import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-  logEvent,
-} from './analytics/index.js'
 
 /**
  * Get the current Kubernetes namespace:

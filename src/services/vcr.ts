@@ -4,7 +4,6 @@ import { mkdir, readFile, writeFile } from 'fs/promises'
 import isPlainObject from 'lodash-es/isPlainObject.js'
 import mapValues from 'lodash-es/mapValues.js'
 import { dirname, join } from 'path'
-import { addToTotalSessionCost } from 'src/cost-tracker.js'
 import { calculateUSDCost } from 'src/utils/modelCost.js'
 import type {
   AssistantMessage,
@@ -19,6 +18,7 @@ import { getClaudeConfigHomeDir, isEnvTruthy } from '../utils/envUtils.js'
 import { getErrnoCode } from '../utils/errors.js'
 import { normalizeMessagesForAPI } from '../utils/messages.js'
 import { jsonParse, jsonStringify } from '../utils/slowOperations.js'
+const addToTotalSessionCost = (cost: number): number => cost
 
 function shouldUseVCR(): boolean {
   if (process.env.NODE_ENV === 'test') {

@@ -150,6 +150,15 @@ export async function getAnthropicClient({
       fetch: resolvedFetch,
     }),
   }
+  const localClientConfig: ConstructorParameters<typeof Anthropic>[0] = {
+    ...ARGS,
+    baseURL: 'http://localhost:11434',
+    apiKey: apiKey || process.env.ANTHROPIC_API_KEY || 'local',
+    authToken: undefined,
+    ...(isDebugToStdErr() && { logger: createStderrLogger() }),
+  }
+  return new Anthropic(localClientConfig)
+
   if (isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK)) {
     const { AnthropicBedrock } = await import('@anthropic-ai/bedrock-sdk')
     // Use region override for small fast model if specified

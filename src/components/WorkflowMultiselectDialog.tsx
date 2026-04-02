@@ -1,4 +1,4 @@
-import { c as _c } from "react/compiler-runtime";
+import { c as _c } from "src/shims/react-compiler-runtime.js";
 import React, { useCallback, useState } from 'react';
 import type { Workflow } from '../commands/install-github-app/types.js';
 import type { ExitState } from '../hooks/useExitOnCtrlCDWithKeybindings.js';
@@ -18,10 +18,10 @@ type Props = {
 };
 const WORKFLOWS: WorkflowOption[] = [{
   value: 'claude' as const,
-  label: '@Claude Code - Tag @claude in issues and PR comments'
+  label: '@Kora OS - Tag @kora in issues and PR comments'
 }, {
   value: 'claude-review' as const,
-  label: 'Claude Code Review - Automated code review on new PRs'
+  label: 'Kora OS Review - Automated code review on new PRs'
 }];
 function renderInputGuide(exitState: ExitState): React.ReactNode {
   if (exitState.pending) {

@@ -1,4 +1,4 @@
-import { c as _c } from "react/compiler-runtime";
+import { c as _c } from "src/shims/react-compiler-runtime.js";
 import figures from 'figures';
 import * as React from 'react';
 import { Suspense, use } from 'react';
@@ -9,13 +9,15 @@ import { Box, Text, useTheme } from '../../ink.js';
 import { type AppState, useAppState } from '../../state/AppState.js';
 import { getCwd } from '../../utils/cwd.js';
 import { getCurrentSessionTitle } from '../../utils/sessionStorage.js';
-import { buildAccountProperties, buildAPIProviderProperties, buildIDEProperties, buildInstallationDiagnostics, buildInstallationHealthDiagnostics, buildMcpProperties, buildMemoryDiagnostics, buildSandboxProperties, buildSettingSourcesProperties, type Diagnostic, getModelDisplayLabel, type Property } from '../../utils/status.js';
+import { buildIDEProperties, buildInstallationDiagnostics, buildInstallationHealthDiagnostics, buildMcpProperties, buildMemoryDiagnostics, buildSandboxProperties, buildSettingSourcesProperties, type Diagnostic, getModelDisplayLabel, type Property } from '../../utils/status.js';
 import type { ThemeName } from '../../utils/theme.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 type Props = {
   context: LocalJSXCommandContext;
   diagnosticsPromise: Promise<Diagnostic[]>;
 };
+const LOCAL_PROFILE_EMAIL = 'kora-admin@localhost';
+const LOCAL_API_STATUS = 'Connected (Local)';
 function buildPrimarySection(): Property[] {
   const sessionId = getSessionId();
   const customTitle = getCurrentSessionTitle(sessionId);
@@ -32,7 +34,13 @@ function buildPrimarySection(): Property[] {
   }, {
     label: 'cwd',
     value: getCwd()
-  }, ...buildAccountProperties(), ...buildAPIProviderProperties()];
+  }, {
+    label: 'Account',
+    value: LOCAL_PROFILE_EMAIL
+  }, {
+    label: 'API',
+    value: LOCAL_API_STATUS
+  }];
 }
 function buildSecondarySection({
   mainLoopModel,

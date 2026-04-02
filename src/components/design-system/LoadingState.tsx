@@ -1,4 +1,4 @@
-import { c as _c } from "react/compiler-runtime";
+import { c as _c } from "src/shims/react-compiler-runtime.js";
 import React from 'react';
 import { Box, Text } from '../../ink.js';
 import { Spinner } from '../Spinner.js';
@@ -42,7 +42,7 @@ type LoadingStateProps = {
  * <LoadingState
  *   message="Loading sessions"
  *   bold
- *   subtitle="Fetching your Claude Code sessions..."
+ *   subtitle="Fetching your Kora OS sessions..."
  * />
  */
 export function LoadingState(t0) {

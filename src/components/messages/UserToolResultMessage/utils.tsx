@@ -1,4 +1,4 @@
-import { c as _c } from "react/compiler-runtime";
+import { c as _c } from "src/shims/react-compiler-runtime.js";
 import type { ToolUseBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
 import { useMemo } from 'react';
 import { findToolByName, type Tool, type Tools } from '../../../Tool.js';

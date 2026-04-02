@@ -1,5 +1,5 @@
 /**
- * Main entrypoint for Claude Code Agent SDK types.
+ * Main entrypoint for Kora OS Agent SDK types.
  *
  * This file re-exports the public SDK API from:
  * - sdk/coreTypes.ts - Common serializable types (messages, configs)
@@ -441,3 +441,21 @@ export async function connectRemoteControl(
 ): Promise<RemoteControlHandle | null> {
   throw new Error('not implemented')
 }
+
+// Compatibility exports for extracted build gaps
+export type PermissionMode = any
+export type SDKCompactBoundaryMessage = any
+export type SDKPermissionDenial = any
+export type SDKStatus = any
+export type SDKUserMessageReplay = any
+export type HookInput = any
+export type HookJSONOutput = any
+export type PermissionResult = any
+export type ModelUsage = any
+export type SDKAssistantMessage = any
+export type SDKPartialAssistantMessage = any
+export type SDKStatusMessage = any
+export type SDKSystemMessage = any
+export type SDKToolProgressMessage = any
+export type SDKResultMessage = any
+export type SDKMessage = any

@@ -1,4 +1,4 @@
-import { c as _c } from "react/compiler-runtime";
+import { c as _c } from "src/shims/react-compiler-runtime.js";
 import { getSentinelCategory } from '@ant/computer-use-mcp/sentinelApps';
 import type { CuPermissionRequest, CuPermissionResponse } from '@ant/computer-use-mcp/types';
 import { DEFAULT_GRANT_FLAGS } from '@ant/computer-use-mcp/types';
@@ -161,7 +161,7 @@ function ComputerUseTccPanel(t0) {
   }
   let t7;
   if ($[15] === Symbol.for("react.memo_cache_sentinel")) {
-    t7 = <Text dimColor={true}>Grant the missing permissions in System Settings, then select "Try again". macOS may require you to restart Claude Code after granting Screen Recording.</Text>;
+    t7 = <Text dimColor={true}>Grant the missing permissions in System Settings, then select "Try again". macOS may require you to restart Kora OS after granting Screen Recording.</Text>;
     $[15] = t7;
   } else {
     t7 = $[15];

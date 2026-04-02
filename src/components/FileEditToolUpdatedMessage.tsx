@@ -1,4 +1,4 @@
-import { c as _c } from "react/compiler-runtime";
+import { c as _c } from "src/shims/react-compiler-runtime.js";
 import type { StructuredPatchHunk } from 'diff';
 import * as React from 'react';
 import { useTerminalSize } from '../hooks/useTerminalSize.js';

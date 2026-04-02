@@ -93,6 +93,7 @@ import {
   type SystemPrompt,
 } from '../../utils/systemPromptType.js'
 import { tokenCountFromLastAPIResponse } from '../../utils/tokens.js'
+import { getDynamicConfig_BLOCKS_ON_INIT } from '../analytics/growthbook.js'
 import {
   currentLimits,
   extractQuotaStatusFromError,
@@ -142,6 +143,8 @@ import {
 } from 'src/constants/betas.js'
 import type { QuerySource } from 'src/constants/querySource.js'
 import type { Notification } from 'src/context/notifications.js'
+import { addToTotalSessionCost } from 'src/cost-tracker.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
 import type { AgentId } from 'src/types/ids.js'
 import {
   ADVISOR_TOOL_INSTRUCTIONS,
@@ -211,18 +214,11 @@ import {
   type LLMRequestNewContext,
   startLLMRequestSpan,
 } from '../../utils/telemetry/sessionTracing.js'
-const addToTotalSessionCost = (cost: number): number => cost
-const getFeatureValue_CACHED_MAY_BE_STALE = <T>(
-  _flag: string,
-  fallback: T,
-): T => fallback
-const getDynamicConfig_BLOCKS_ON_INIT = <T>(
-  _flag: string,
-  fallback: T,
-): T => fallback
-type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS = string
-const logEvent = (..._args: unknown[]): void => {}
 /* eslint-enable @typescript-eslint/no-require-imports */
+import {
+  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+  logEvent,
+} from '../analytics/index.js'
 import {
   consumePendingCacheEdits,
   getPinnedCacheEdits,
@@ -3283,7 +3279,7 @@ export async function queryHaiku({
 type QueryWithModelOptions = Omit<Options, 'getToolPermissionContext'>
 
 /**
- * Query a specific model through the Claude Code infrastructure.
+ * Query a specific model through the Kora OS infrastructure.
  * This goes through the full query pipeline including proper authentication,
  * betas, and headers - unlike direct API calls.
  */

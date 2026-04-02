@@ -32,6 +32,17 @@ declare module "bun:bundle" {
   export function feature(name: string): boolean;
 }
 
+declare module "react/compiler-runtime" {
+  export function c(size: number): any[];
+}
+
+declare namespace NodeJS {
+  interface ProcessEnv {
+    USER_TYPE?: string;
+    NODE_ENV?: string;
+  }
+}
+
 // Stub declarations for internal Anthropic packages that are not publicly available
 declare module "@ant/claude-for-chrome-mcp" {
   const mod: any;
@@ -74,4 +85,9 @@ declare module "color-diff-napi" {
   export function diff(a: string, b: string): any;
   const mod: any;
   export default mod;
+}
+
+declare module "*.md" {
+  const content: string;
+  export default content;
 }

@@ -1,4 +1,4 @@
-import { c as _c } from "react/compiler-runtime";
+import { c as _c } from "src/shims/react-compiler-runtime.js";
 import { useEffect } from 'react';
 import type { ScopedMcpServerConfig } from '../services/mcp/types.js';
 import { getGlobalConfig } from '../utils/config.js';

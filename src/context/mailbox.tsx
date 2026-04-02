@@ -1,4 +1,4 @@
-import { c as _c } from "react/compiler-runtime";
+import { c as _c } from "src/shims/react-compiler-runtime.js";
 import React, { createContext, useContext, useMemo } from 'react';
 import { Mailbox } from '../utils/mailbox.js';
 const MailboxContext = createContext<Mailbox | undefined>(undefined);

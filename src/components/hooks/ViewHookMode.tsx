@@ -1,4 +1,4 @@
-import { c as _c } from "react/compiler-runtime";
+import { c as _c } from "src/shims/react-compiler-runtime.js";
 /**
  * ViewHookMode shows read-only details for a single configured hook.
  *

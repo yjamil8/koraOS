@@ -1,4 +1,4 @@
-import { c as _c } from "react/compiler-runtime";
+import { c as _c } from "src/shims/react-compiler-runtime.js";
 import * as React from 'react';
 import { useCallback } from 'react';
 import { Select } from '../../../components/CustomSelect/select.js';
@@ -68,7 +68,7 @@ export function RemoveWorkspaceDirectory(t0) {
   }
   let t4;
   if ($[10] === Symbol.for("react.memo_cache_sentinel")) {
-    t4 = <Text>Claude Code will no longer have access to files in this directory.</Text>;
+    t4 = <Text>Kora OS will no longer have access to files in this directory.</Text>;
     $[10] = t4;
   } else {
     t4 = $[10];

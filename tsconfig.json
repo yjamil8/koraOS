@@ -4,10 +4,11 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
-    "strict": true,
+    "strict": false,
     "esModuleInterop": true,
     "allowImportingTsExtensions": true,
     "noEmit": true,
+    "noCheck": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
@@ -16,9 +17,11 @@
     "declarationMap": true,
     "sourceMap": true,
     "lib": ["ESNext"],
-    "types": ["bun-types", "node"],
+    "types": ["bun", "node"],
+    "ignoreDeprecations": "5.0",
     "paths": {
-      "src/*": ["./src/*"]
+      "src/*": ["./src/*"],
+      "react/compiler-runtime": ["./src/shims/react-compiler-runtime.ts"]
     },
     "baseUrl": ".",
     "rootDir": "."

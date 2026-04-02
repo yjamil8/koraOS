@@ -1,4 +1,4 @@
-import { c as _c } from "react/compiler-runtime";
+import { c as _c } from "src/shims/react-compiler-runtime.js";
 import { basename } from 'path';
 import { toString as qrToString } from 'qrcode';
 import * as React from 'react';

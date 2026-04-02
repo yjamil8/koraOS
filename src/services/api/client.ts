@@ -150,15 +150,6 @@ export async function getAnthropicClient({
       fetch: resolvedFetch,
     }),
   }
-  const localClientConfig: ConstructorParameters<typeof Anthropic>[0] = {
-    ...ARGS,
-    baseURL: 'http://localhost:11434',
-    apiKey: apiKey || process.env.ANTHROPIC_API_KEY || 'local',
-    authToken: undefined,
-    ...(isDebugToStdErr() && { logger: createStderrLogger() }),
-  }
-  return new Anthropic(localClientConfig)
-
   if (isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK)) {
     const { AnthropicBedrock } = await import('@anthropic-ai/bedrock-sdk')
     // Use region override for small fast model if specified
@@ -305,6 +296,14 @@ export async function getAnthropicClient({
     // we have always been lying about the return type - this doesn't support batching or models
     return new AnthropicVertex(vertexArgs) as unknown as Anthropic
   }
+
+  return new Anthropic({
+    apiKey: apiKey || 'local',
+    authToken: undefined,
+    baseURL: 'http://localhost:11434',
+    ...ARGS,
+    ...(isDebugToStdErr() && { logger: createStderrLogger() }),
+  })
 
   // Determine authentication method based on available tokens
   const clientConfig: ConstructorParameters<typeof Anthropic>[0] = {

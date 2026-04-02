@@ -1,4 +1,4 @@
-import { c as _c } from "react/compiler-runtime";
+import { c as _c } from "src/shims/react-compiler-runtime.js";
 import * as React from 'react';
 import { useEffect, useState } from 'react';
 import { UP_ARROW } from '../../constants/figures.js';

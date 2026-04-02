@@ -1,4 +1,4 @@
-import { c as _c } from "react/compiler-runtime";
+import { c as _c } from "src/shims/react-compiler-runtime.js";
 import * as React from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import { getAllOutputStyles, OUTPUT_STYLE_CONFIG, type OutputStyleConfig } from '../constants/outputStyles.js';
@@ -80,7 +80,7 @@ export function OutputStylePicker(t0) {
   const t6 = !isStandaloneCommand;
   let t7;
   if ($[5] === Symbol.for("react.memo_cache_sentinel")) {
-    t7 = <Box marginTop={1}><Text dimColor={true}>This changes how Claude Code communicates with you</Text></Box>;
+    t7 = <Box marginTop={1}><Text dimColor={true}>This changes how Kora OS communicates with you</Text></Box>;
     $[5] = t7;
   } else {
     t7 = $[5];

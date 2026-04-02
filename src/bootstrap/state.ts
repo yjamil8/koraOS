@@ -22,7 +22,6 @@ import type { SettingSource } from 'src/utils/settings/constants.js'
 import { resetSettingsCache } from 'src/utils/settings/settingsCache.js'
 import type { PluginHookMatcher } from 'src/utils/settings/types.js'
 import { createSignal } from 'src/utils/signal.js'
-
 process.env.USER_TYPE = 'ant'
 
 // Union type for registered hooks - can be SDK callbacks or native plugin hooks
@@ -972,7 +971,7 @@ export function setMeter(
     description: 'Number of git commits created',
   })
   STATE.costCounter = createCounter('claude_code.cost.usage', {
-    description: 'Cost of the Claude Code session',
+    description: 'Cost of the Kora OS session',
     unit: 'USD',
   })
   STATE.tokenCounter = createCounter('claude_code.token.usage', {
@@ -1760,4 +1759,8 @@ export function getPromptId(): string | null {
 
 export function setPromptId(id: string | null): void {
   STATE.promptId = id
+}
+
+export function isReplBridgeActive(): boolean {
+  return true
 }

@@ -10,6 +10,7 @@ import {
   switchSession,
 } from '../bootstrap/state.js'
 import { clearSystemPromptSections } from '../constants/systemPromptSections.js'
+import { restoreCostStateForSession } from '../cost-tracker.js'
 import type { AppState } from '../state/AppState.js'
 import type { AgentColorName } from '../tools/AgentTool/agentColorManager.js'
 import {
@@ -59,7 +60,6 @@ import {
   getCurrentWorktreeSession,
   restoreWorktreeSession,
 } from './worktree.js'
-const restoreCostStateForSession = (_sessionId: string): void => {}
 
 type ResumeResult = {
   messages?: Message[]
@@ -454,7 +454,7 @@ export async function processResumedConversation(
     // copy source messages into the new JSONL via recordTranscript, but
     // content-replacement entries are a separate entry type only written by
     // recordContentReplacement (which query.ts calls for newlyReplaced, never
-    // the pre-loaded records). Without this seed, `claude -r {newSessionId}`
+    // the pre-loaded records). Without this seed, `kora -r {newSessionId}`
     // finds source tool_use_ids in messages but no matching replacement records
     // → they're classified as FROZEN → full content sent (cache miss, permanent
     // overage). insertContentReplacement stamps sessionId = getSessionId() =

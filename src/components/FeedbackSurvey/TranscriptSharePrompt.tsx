@@ -1,4 +1,4 @@
-import { c as _c } from "react/compiler-runtime";
+import { c as _c } from "src/shims/react-compiler-runtime.js";
 import React from 'react';
 import { BLACK_CIRCLE } from '../../constants/figures.js';
 import { Box, Text } from '../../ink.js';
@@ -50,7 +50,7 @@ export function TranscriptSharePrompt(t0) {
   useDebouncedDigitInput(t2);
   let t3;
   if ($[6] === Symbol.for("react.memo_cache_sentinel")) {
-    t3 = <Box><Text color="ansi:cyan">{BLACK_CIRCLE} </Text><Text bold={true}>Can Anthropic look at your session transcript to help us improve Claude Code?</Text></Box>;
+    t3 = <Box><Text color="ansi:cyan">{BLACK_CIRCLE} </Text><Text bold={true}>Can Anthropic look at your session transcript to help us improve Kora OS?</Text></Box>;
     $[6] = t3;
   } else {
     t3 = $[6];

@@ -54,6 +54,8 @@ import {
   createUserMessage,
 } from '../../utils/messages.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
+import { logEvent } from '../analytics/index.js'
+import { sanitizeToolNameForAnalytics } from '../analytics/metadata.js'
 import {
   buildExtractAutoOnlyPrompt,
   buildExtractCombinedPrompt,

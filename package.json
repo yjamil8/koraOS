@@ -1,11 +1,11 @@
 {
-  "name": "@anthropic-ai/claude-code",
-  "version": "1.0.0-research",
-  "description": "Claude Code CLI - Source snapshot for research",
+  "name": "kora-os",
+  "version": "1.0.0",
+  "description": "Agent Kora OS",
   "type": "module",
   "main": "src/entrypoints/cli.tsx",
   "bin": {
-    "claude": "dist/cli.js"
+    "kora": "./src/main.tsx"
   },
   "scripts": {
     "build": "bun run scripts/build.ts",

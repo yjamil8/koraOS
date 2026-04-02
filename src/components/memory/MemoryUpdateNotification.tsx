@@ -1,4 +1,4 @@
-import { c as _c } from "react/compiler-runtime";
+import { c as _c } from "src/shims/react-compiler-runtime.js";
 import { homedir } from 'os';
 import { relative } from 'path';
 import React from 'react';

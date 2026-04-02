@@ -1,4 +1,4 @@
-import { c as _c } from "react/compiler-runtime";
+import { c as _c } from "src/shims/react-compiler-runtime.js";
 import * as React from 'react';
 import { useEffect, useRef } from 'react';
 import { KeyboardShortcutHint } from '../components/design-system/KeyboardShortcutHint.js';
@@ -96,10 +96,10 @@ export function shouldAutoRunIssue(reason: AutoRunIssueReason): boolean {
 
 /**
  * Returns the appropriate command to auto-run based on the reason
- * ANT-ONLY: good-claude command only exists in ant builds
+ * ANT-ONLY: good-kora command only exists in ant builds
  */
 export function getAutoRunCommand(reason: AutoRunIssueReason): string {
-  // Only ant builds have the /good-claude command
+  // Only ant builds have the /good-kora command
   if ("external" === 'ant' && reason === 'feedback_survey_good') {
     return '/good-claude';
   }

@@ -1,4 +1,4 @@
-import { c as _c } from "react/compiler-runtime";
+import { c as _c } from "src/shims/react-compiler-runtime.js";
 import { feature } from 'bun:bundle';
 import { plot as asciichart } from 'asciichart';
 import chalk from 'chalk';
@@ -94,7 +94,7 @@ export function Stats(t0) {
   const allTimePromise = t1;
   let t2;
   if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
-    t2 = <Box marginTop={1}><Spinner /><Text> Loading your Claude Code stats…</Text></Box>;
+    t2 = <Box marginTop={1}><Spinner /><Text> Loading your Kora OS stats…</Text></Box>;
     $[1] = t2;
   } else {
     t2 = $[1];
@@ -242,7 +242,7 @@ function StatsContent(t0) {
   if (allTimeResult.type === "empty") {
     let t7;
     if ($[15] === Symbol.for("react.memo_cache_sentinel")) {
-      t7 = <Box marginTop={1}><Text color="warning">No stats available yet. Start using Claude Code!</Text></Box>;
+      t7 = <Box marginTop={1}><Text color="warning">No stats available yet. Start using Kora OS!</Text></Box>;
       $[15] = t7;
     } else {
       t7 = $[15];
@@ -1095,7 +1095,7 @@ function renderStatsToAnsi(stats: ClaudeCodeStats, activeTab: 'Overview' | 'Mode
 function renderOverviewToAnsi(stats: ClaudeCodeStats): string[] {
   const lines: string[] = [];
   const theme = getTheme(resolveThemeSetting(getGlobalConfig().theme));
-  const h = (text: string) => applyColor(text, theme.claude as Color);
+  const h = (text: string) => applyColor(text, theme.kora as Color);
 
   // Two-column helper with fixed spacing
   // Column 1: label (18 chars) + value + padding to reach col 2

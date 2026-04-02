@@ -1,4 +1,4 @@
-import { c as _c } from "react/compiler-runtime";
+import { c as _c } from "src/shims/react-compiler-runtime.js";
 /**
  * SelectMatcherMode shows the configured matchers for a selected hook event.
  *

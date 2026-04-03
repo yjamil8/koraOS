@@ -11,6 +11,7 @@ import { z } from 'zod/v4'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import { queryModelWithStreaming } from '../../services/api/claude.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
+import { getWebFetchUserAgent } from '../../utils/http.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import { logError } from '../../utils/log.js'
 import { createUserMessage } from '../../utils/messages.js'
@@ -75,6 +76,107 @@ export type Output = z.infer<OutputSchema>
 export type { WebSearchProgress } from '../../types/tools.js'
 
 import type { WebSearchProgress } from '../../types/tools.js'
+
+function decodeHtmlEntities(input: string): string {
+  return input
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+}
+
+function normalizeSearchUrl(raw: string): string | null {
+  try {
+    const href = raw.trim()
+    if (!href || href.startsWith('javascript:')) {
+      return null
+    }
+
+    const resolved = href.startsWith('//')
+      ? `https:${href}`
+      : href.startsWith('/')
+        ? `https://duckduckgo.com${href}`
+        : href
+
+    const parsed = new URL(resolved)
+    if (parsed.hostname === 'duckduckgo.com' && parsed.pathname === '/l/') {
+      const redirected = parsed.searchParams.get('uddg')
+      if (redirected) {
+        return decodeURIComponent(redirected)
+      }
+    }
+
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return parsed.toString()
+    }
+  } catch {
+    // Ignore malformed URLs
+  }
+
+  return null
+}
+
+function filterDomains(
+  hits: Array<{ title: string; url: string }>,
+  allowedDomains?: string[],
+  blockedDomains?: string[],
+): Array<{ title: string; url: string }> {
+  const allowed = new Set((allowedDomains ?? []).map(d => d.toLowerCase()))
+  const blocked = new Set((blockedDomains ?? []).map(d => d.toLowerCase()))
+
+  return hits.filter(hit => {
+    try {
+      const host = new URL(hit.url).hostname.toLowerCase()
+      if (blocked.size > 0 && blocked.has(host)) return false
+      if (allowed.size > 0 && !allowed.has(host)) return false
+      return true
+    } catch {
+      return false
+    }
+  })
+}
+
+async function runLocalWebSearch(input: Input): Promise<SearchResult> {
+  const endpoint = `https://duckduckgo.com/html/?q=${encodeURIComponent(input.query)}`
+  const response = await fetch(endpoint, {
+    headers: {
+      'User-Agent': getWebFetchUserAgent(),
+    },
+  })
+  const html = await response.text()
+
+  const regex =
+    /<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/gims
+  const hits: Array<{ title: string; url: string }> = []
+  const seen = new Set<string>()
+
+  let match: RegExpExecArray | null = regex.exec(html)
+  while (match && hits.length < 8) {
+    const rawUrl = match[1]
+    const rawTitle = match[2]
+    const url = normalizeSearchUrl(rawUrl)
+    if (url && !seen.has(url)) {
+      seen.add(url)
+      const title = decodeHtmlEntities(rawTitle.replace(/<[^>]*>/g, ' ').trim())
+      if (title.length > 0) {
+        hits.push({ title, url })
+      }
+    }
+    match = regex.exec(html)
+  }
+
+  const filteredHits = filterDomains(
+    hits,
+    input.allowed_domains,
+    input.blocked_domains,
+  )
+
+  return {
+    tool_use_id: 'local-web-search',
+    content: filteredHits,
+  }
+}
 
 function makeToolSchema(input: Input): BetaWebSearchTool20250305 {
   return {
@@ -172,11 +274,6 @@ export const WebSearchTool = buildTool({
     const provider = getAPIProvider()
     const model = getMainLoopModel()
 
-    // Anthropic server-side web search tool isn't available on local/proxy base URLs.
-    if (!isFirstPartyAnthropicBaseUrl()) {
-      return false
-    }
-
     // Enable for firstParty
     if (provider === 'firstParty') {
       return true
@@ -262,6 +359,19 @@ export const WebSearchTool = buildTool({
   async call(input, context, _canUseTool, _parentMessage, onProgress) {
     const startTime = performance.now()
     const { query } = input
+
+    if (!isFirstPartyAnthropicBaseUrl()) {
+      const localResults = await runLocalWebSearch(input)
+      const durationSeconds = (performance.now() - startTime) / 1000
+      return {
+        data: {
+          query,
+          results: [localResults],
+          durationSeconds,
+        },
+      }
+    }
+
     const userMessage = createUserMessage({
       content: 'Perform a web search for the query: ' + query,
     })

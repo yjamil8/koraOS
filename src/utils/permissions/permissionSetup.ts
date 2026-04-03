@@ -705,10 +705,17 @@ export function initialPermissionModeFromCLI({
   const settingsDisableBypassPermissionsMode =
     settings.permissions?.disableBypassPermissionsMode === 'disable'
 
-  // Statsig gate takes precedence over settings
+  const explicitlyRequestedBypass =
+    dangerouslySkipPermissions === true ||
+    permissionModeCli === 'bypassPermissions'
+
+  // Statsig/settings can disable implicit bypass, but explicit CLI bypass in
+  // local harness mode should remain available when the user asks for it.
   const disableBypassPermissionsMode =
-    growthBookDisableBypassPermissionsMode ||
-    settingsDisableBypassPermissionsMode
+    explicitlyRequestedBypass
+      ? false
+      : growthBookDisableBypassPermissionsMode ||
+        settingsDisableBypassPermissionsMode
 
   // Sync circuit-breaker check (cached GB read). Prevents the
   // AutoModeOptInDialog from showing in showSetupScreens() when auto can't

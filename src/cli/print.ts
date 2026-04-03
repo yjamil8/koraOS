@@ -190,7 +190,10 @@ import { getLastCacheSafeParams } from 'src/utils/forkedAgent.js'
 import { getAccountInformation } from 'src/utils/auth.js'
 import { OAuthService } from 'src/services/oauth/index.js'
 import { installOAuthTokens } from 'src/cli/handlers/auth.js'
-import { getAPIProvider } from 'src/utils/model/providers.js'
+import {
+  getAPIProvider,
+  isFirstPartyAnthropicBaseUrl,
+} from 'src/utils/model/providers.js'
 import type { HookCallbackMatcher } from 'src/types/hooks.js'
 import { AwsAuthStatusManager } from 'src/utils/awsAuthStatusManager.js'
 import type { HookEvent } from 'src/entrypoints/agentSdkTypes.js'
@@ -554,8 +557,8 @@ export async function runHeadless(
   headlessProfilerStartTurn()
   headlessProfilerCheckpoint('runHeadless_entry')
 
-  // Check Grove requirements for non-interactive consumer subscribers
-  if (await isQualifiedForGrove()) {
+  // Grove checks are only valid against first-party Anthropic endpoints.
+  if (isFirstPartyAnthropicBaseUrl() && (await isQualifiedForGrove())) {
     await checkGroveForNonInteractive()
   }
   headlessProfilerCheckpoint('after_grove_check')

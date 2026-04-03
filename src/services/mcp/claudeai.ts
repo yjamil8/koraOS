@@ -39,6 +39,10 @@ const MCP_SERVERS_BETA_HEADER = 'mcp-servers-2025-12-04'
 export const fetchClaudeAIMcpConfigsIfEligible = memoize(
   async (): Promise<Record<string, ScopedMcpServerConfig>> => {
     try {
+      // Local/offline Kora build: disable claude.ai-managed MCP connectors.
+      logForDebugging('[claudeai-mcp] Disabled in local build')
+      return {}
+
       if (isEnvDefinedFalsy(process.env.ENABLE_CLAUDEAI_MCP_SERVERS)) {
         logForDebugging('[claudeai-mcp] Disabled via env var')
         logEvent('tengu_claudeai_mcp_eligibility', {

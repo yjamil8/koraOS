@@ -31,6 +31,11 @@ import {
 
 const LOCAL_LM_STUDIO_BASE_URL = 'http://192.168.1.200:1234'
 
+// Keep provider/base-url feature checks consistent with the hardcoded local client.
+if (!process.env.ANTHROPIC_BASE_URL) {
+  process.env.ANTHROPIC_BASE_URL = LOCAL_LM_STUDIO_BASE_URL
+}
+
 /**
  * Environment variables for different client types:
  *

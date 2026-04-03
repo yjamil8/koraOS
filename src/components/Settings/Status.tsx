@@ -16,7 +16,7 @@ type Props = {
   context: LocalJSXCommandContext;
   diagnosticsPromise: Promise<Diagnostic[]>;
 };
-const LOCAL_PROFILE_EMAIL = 'kora-admin@localhost';
+const LOCAL_PROFILE_EMAIL = 'Yousuf';
 const LOCAL_API_STATUS = 'Connected (Local)';
 function buildPrimarySection(): Property[] {
   const sessionId = getSessionId();

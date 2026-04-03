@@ -21,11 +21,21 @@ import {
   MAX_MARKDOWN_LENGTH,
 } from './utils.js'
 
+const DEFAULT_WEBFETCH_PROMPT =
+  'Summarize the page and extract the key information relevant to the user request.'
+
 const inputSchema = lazySchema(() =>
-  z.strictObject({
-    url: z.string().url().describe('The URL to fetch content from'),
-    prompt: z.string().describe('The prompt to run on the fetched content'),
-  }),
+  z.preprocess(
+    raw => (typeof raw === 'string' ? { url: raw } : raw),
+    z.strictObject({
+      url: z.string().url().describe('The URL to fetch content from'),
+      prompt: z
+        .string()
+        .optional()
+        .default(DEFAULT_WEBFETCH_PROMPT)
+        .describe('The prompt to run on the fetched content'),
+    }),
+  ),
 )
 type InputSchema = ReturnType<typeof inputSchema>
 

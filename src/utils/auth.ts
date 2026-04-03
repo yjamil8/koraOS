@@ -10,7 +10,10 @@ import {
   logEvent,
 } from 'src/services/analytics/index.js'
 import { getModelStrings } from 'src/utils/model/modelStrings.js'
-import { getAPIProvider } from 'src/utils/model/providers.js'
+import {
+  getAPIProvider,
+  isFirstPartyAnthropicBaseUrl,
+} from 'src/utils/model/providers.js'
 import {
   getIsNonInteractiveSession,
   preferThirdPartyAuthentication,
@@ -1716,15 +1719,15 @@ export function getSubscriptionName(): string {
 
   switch (subscriptionType) {
     case 'enterprise':
-      return 'Claude Enterprise'
+      return 'Kora Enterprise'
     case 'team':
-      return 'Claude Team'
+      return 'Kora Team'
     case 'max':
-      return 'Claude Max'
+      return 'Kora Max'
     case 'pro':
-      return 'Claude Pro'
+      return 'Kora Pro'
     default:
-      return 'Claude API'
+      return 'Kora API'
   }
 }
 
@@ -1921,6 +1924,12 @@ export type OrgValidationResult =
  * token's org (network error, missing profile data), validation fails.
  */
 export async function validateForceLoginOrg(): Promise<OrgValidationResult> {
+  // Local/proxy backends are offline/non-Anthropic environments and should not
+  // block on Anthropic org validation.
+  if (!isFirstPartyAnthropicBaseUrl()) {
+    return { valid: true }
+  }
+
   // `kora ssh` remote: real auth lives on the local machine and is injected
   // by the proxy. The placeholder token can't be validated against the profile
   // endpoint. The local side already ran this check before establishing the session.

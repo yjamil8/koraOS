@@ -208,6 +208,11 @@ import { getTmuxInstallInstructions, isTmuxAvailable, parsePRReference } from '.
 // eslint-disable-next-line custom-rules/no-top-level-side-effects
 profileCheckpoint('main_tsx_imports_loaded');
 
+const LOCAL_LM_STUDIO_BASE_URL = 'http://192.168.1.200:1234';
+if (!process.env.ANTHROPIC_BASE_URL) {
+  process.env.ANTHROPIC_BASE_URL = LOCAL_LM_STUDIO_BASE_URL;
+}
+
 const RUNTIME_MACRO = typeof MACRO !== 'undefined' ? MACRO : {
   VERSION: '1.0.0-dev',
   BUILD_TIME: '',
@@ -2753,7 +2758,16 @@ async function run(): Promise<CommanderCommand> {
       // fetch was kicked off early (line ~2558) so only residual time blocks
       // here. --bare skips claude.ai entirely for perf-sensitive scripts.
       profileCheckpoint('before_connectMcp');
-      await connectMcpBatch(regularMcpConfigs, 'regular');
+      const REGULAR_MCP_TIMEOUT_MS = 5_000;
+      const regularConnect = connectMcpBatch(regularMcpConfigs, 'regular');
+      let regularTimer: ReturnType<typeof setTimeout> | undefined;
+      const regularTimedOut = await Promise.race([regularConnect.then(() => false), new Promise<boolean>(resolve => {
+        regularTimer = setTimeout(r => r(true), REGULAR_MCP_TIMEOUT_MS, resolve);
+      })]);
+      if (regularTimer) clearTimeout(regularTimer);
+      if (regularTimedOut) {
+        logForDebugging(`[MCP] regular connectors not ready after ${REGULAR_MCP_TIMEOUT_MS}ms — proceeding; background connection continues`);
+      }
       profileCheckpoint('after_connectMcp');
       // Dedup: suppress plugin MCP servers that duplicate a claude.ai
       // connector (connector wins), then connect claude.ai servers.

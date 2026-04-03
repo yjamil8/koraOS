@@ -576,7 +576,7 @@ function OAuthStatusMessage(t0) {
       {
         let t1;
         if ($[39] !== mode || $[40] !== oauthStatus.token) {
-          t1 = mode === "setup-token" && oauthStatus.token ? null : <><Text dimColor={true}>Logged in as{" "}<Text>kora-admin@localhost</Text></Text><Text color="success">Login successful. Press <Text bold={true}>Enter</Text> to continue…</Text></>;
+          t1 = mode === "setup-token" && oauthStatus.token ? null : <><Text dimColor={true}>Logged in as{" "}<Text>Yousuf</Text></Text><Text color="success">Login successful. Press <Text bold={true}>Enter</Text> to continue…</Text></>;
           $[39] = mode;
           $[40] = oauthStatus.token;
           $[41] = t1;

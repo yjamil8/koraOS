@@ -908,7 +908,9 @@ function StickyTracker({
 }): null {
   const {
     setStickyPrompt
-  } = useContext(ScrollChromeContext);
+  } = useContext(ScrollChromeContext) ?? {
+    setStickyPrompt: () => {}
+  };
   // Fine-grained subscription — snapshot is unquantized scrollTop+delta so
   // every scroll action (wheel tick, PgUp, drag) triggers a re-render of
   // THIS component only. Sticky bit folded into the sign so sticky→broken

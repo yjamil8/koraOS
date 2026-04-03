@@ -208,6 +208,16 @@ import { getTmuxInstallInstructions, isTmuxAvailable, parsePRReference } from '.
 // eslint-disable-next-line custom-rules/no-top-level-side-effects
 profileCheckpoint('main_tsx_imports_loaded');
 
+const RUNTIME_MACRO = typeof MACRO !== 'undefined' ? MACRO : {
+  VERSION: '1.0.0-dev',
+  BUILD_TIME: '',
+  PACKAGE_URL: 'kora-os',
+  NATIVE_PACKAGE_URL: 'kora-os-native',
+  FEEDBACK_CHANNEL: 'local-feedback',
+  ISSUES_EXPLAINER: 'open an issue',
+  VERSION_CHANGELOG: ''
+};
+
 /**
  * Log managed settings keys to Statsig for analytics.
  * This is called after init() completes to ensure settings are loaded
@@ -800,7 +810,12 @@ export async function main() {
   const hasPrintFlag = cliArgs.includes('-p') || cliArgs.includes('--print');
   const hasInitOnlyFlag = cliArgs.includes('--init-only');
   const hasSdkUrl = cliArgs.some(arg => arg.startsWith('--sdk-url'));
-  const isNonInteractive = hasPrintFlag || hasInitOnlyFlag || hasSdkUrl || !process.stdout.isTTY;
+  const forceInteractive = isEnvTruthy(process.env.CLAUDE_CODE_FORCE_INTERACTIVE);
+  // Some shells/runtimes can report one stream as non-TTY even in a real
+  // interactive terminal. Treat the session as interactive if ANY stdio stream
+  // is a TTY unless explicit non-interactive flags are provided.
+  const hasAnyTty = !!(process.stdin.isTTY || process.stdout.isTTY || process.stderr.isTTY);
+  const isNonInteractive = !forceInteractive && (hasPrintFlag || hasInitOnlyFlag || hasSdkUrl || !hasAnyTty);
 
   // Stop capturing early input for non-interactive modes
   if (isNonInteractive) {
@@ -906,6 +921,7 @@ async function run(): Promise<CommanderCommand> {
   // not when displaying help. This avoids the need for env variable signaling.
   program.hook('preAction', async thisCommand => {
     profileCheckpoint('preAction_start');
+    logForDebugging('[STARTUP] preAction entered');
     // Await async subprocess loads started at module evaluation (lines 12-20).
     // Nearly free — subprocesses complete during the ~135ms of imports above.
     // Must resolve before init() which triggers the first settings read
@@ -913,8 +929,10 @@ async function run(): Promise<CommanderCommand> {
     // → isRemoteManagedSettingsEligible → sync keychain reads otherwise ~65ms).
     await Promise.all([ensureMdmSettingsLoaded(), ensureKeychainPrefetchCompleted()]);
     profileCheckpoint('preAction_after_mdm');
+    logForDebugging('[STARTUP] preAction after mdm/keychain');
     await init();
     profileCheckpoint('preAction_after_init');
+    logForDebugging('[STARTUP] preAction after init');
 
     // process.title on Windows sets the console title directly; on POSIX,
     // terminal shell integration may mirror the process name to the tab.
@@ -933,6 +951,7 @@ async function run(): Promise<CommanderCommand> {
     } = await import('./utils/sinks.js');
     initSinks();
     profileCheckpoint('preAction_after_sinks');
+    logForDebugging('[STARTUP] preAction after sinks');
 
     // gh-33508: --plugin-dir is a top-level program option. The default
     // action reads it from its own options destructure, but subcommands
@@ -949,6 +968,7 @@ async function run(): Promise<CommanderCommand> {
     }
     runMigrations();
     profileCheckpoint('preAction_after_migrations');
+    logForDebugging('[STARTUP] preAction after migrations');
 
     // Load remote managed settings for enterprise customers (non-blocking)
     // Fails open - if fetch fails, continues without remote settings
@@ -957,6 +977,7 @@ async function run(): Promise<CommanderCommand> {
     void loadRemoteManagedSettings();
     void loadPolicyLimits();
     profileCheckpoint('preAction_after_remote_settings');
+    logForDebugging('[STARTUP] preAction after remote-settings kickoff');
 
     // Load settings sync (non-blocking, fail-open)
     // CLI: uploads local settings to remote (CCR download is handled by print.ts)
@@ -964,6 +985,7 @@ async function run(): Promise<CommanderCommand> {
       void import('./services/settingsSync/index.js').then(m => m.uploadUserSettingsInBackground());
     }
     profileCheckpoint('preAction_after_settings_sync');
+    logForDebugging('[STARTUP] preAction complete');
   });
   program.name('claude').description(`Kora OS - starts an interactive session by default, use -p/--print for non-interactive output`).argument('[prompt]', 'Your prompt', String)
   // Subcommands inherit helpOption via commander's copyInheritedSettings —
@@ -1005,6 +1027,7 @@ async function run(): Promise<CommanderCommand> {
   // --plugin-dir takes exactly one arg; repeat the flag for multiple dirs.
   .option('--plugin-dir <path>', 'Load plugins from a directory for this session only (repeatable: --plugin-dir A --plugin-dir B)', (val: string, prev: string[]) => [...prev, val], [] as string[]).option('--disable-slash-commands', 'Disable all skills', () => true).option('--chrome', 'Enable Claude in Chrome integration').option('--no-chrome', 'Disable Claude in Chrome integration').option('--file <specs...>', 'File resources to download at startup. Format: file_id:relative_path (e.g., --file file_abc:doc.txt file_def:img.png)').action(async (prompt, options) => {
     profileCheckpoint('action_handler_start');
+    logForDebugging('[STARTUP] action handler entered');
 
     // --bare = one-switch minimal mode. Sets SIMPLE so all the existing
     // gates fire (CLAUDE.md, skills, hooks inside executeHooks, agent
@@ -1860,6 +1883,7 @@ async function run(): Promise<CommanderCommand> {
     const effectivePrompt = prompt || '';
     let inputPrompt = await getInputPrompt(effectivePrompt, (inputFormat ?? 'text') as 'text' | 'stream-json');
     profileCheckpoint('action_after_input_prompt');
+    logForDebugging('[STARTUP] input prompt resolved');
 
     // Activate proactive mode BEFORE getTools() so SleepTool.isEnabled()
     // (which returns isProactiveActive()) passes and Sleep is included.
@@ -1876,6 +1900,7 @@ async function run(): Promise<CommanderCommand> {
       tools = applyCoordinatorToolFilter(tools);
     }
     profileCheckpoint('action_tools_loaded');
+    logForDebugging('[STARTUP] tools loaded');
     let jsonSchema: ToolInputJSONSchema | undefined;
     if (isSyntheticOutputToolEnabled({
       isNonInteractiveSession
@@ -2227,6 +2252,7 @@ async function run(): Promise<CommanderCommand> {
         createRoot
       } = await import('./ink.js');
       root = await createRoot(ctx.renderOptions);
+      logForDebugging('[STARTUP] ink root created');
 
       // Log startup time now, before any blocking dialog renders. Logging
       // from REPL's first render (the old location) included however long
@@ -2343,7 +2369,8 @@ async function run(): Promise<CommanderCommand> {
     // mode doesn't apply to the Agent SDK anyway (see getFastModeUnavailableReason).
     const bgRefreshThrottleMs = getFeatureValue_CACHED_MAY_BE_STALE('tengu_cicada_nap_ms', 0);
     const lastPrefetched = getGlobalConfig().startupPrefetchedAt ?? 0;
-    const skipStartupPrefetches = isBareMode() || bgRefreshThrottleMs > 0 && Date.now() - lastPrefetched < bgRefreshThrottleMs;
+    // Local single-tenant build: disable Anthropic startup prefetch calls.
+    const skipStartupPrefetches = true;
     if (!skipStartupPrefetches) {
       const lastPrefetchedInfo = lastPrefetched > 0 ? ` last ran ${Math.round((Date.now() - lastPrefetched) / 1000)}s ago` : '';
       logForDebugging(`Starting background startup prefetches${lastPrefetchedInfo}`);
@@ -2487,7 +2514,7 @@ async function run(): Promise<CommanderCommand> {
       }
     }
     logForDiagnosticsNoPII('info', 'started', {
-      version: MACRO.VERSION,
+      version: RUNTIME_MACRO.VERSION,
       is_native_binary: isInBundledMode()
     });
     registerCleanup(async () => {
@@ -2923,15 +2950,21 @@ async function run(): Promise<CommanderCommand> {
       /* eslint-enable @typescript-eslint/no-require-imports */
       ccrMirrorEnabled = isCcrMirrorEnabled();
     }
+    const initialSettings = getInitialSettings();
+    const initialVerboseSetting = verbose ?? getGlobalConfig().verbose ?? false;
+    const initialExpandedView = getGlobalConfig().showSpinnerTree ? 'teammates' : getGlobalConfig().showExpandedTodos ? 'tasks' : 'none';
+    const initialPromptSuggestionEnabled = shouldEnablePromptSuggestion();
+    const initialFastMode = getInitialFastModeSetting(resolvedInitialModel);
+    const initialTeamContext = feature('KAIROS') ? assistantTeamContext ?? computeInitialTeamContext?.() : computeInitialTeamContext?.();
     const initialState: AppState = {
-      settings: getInitialSettings(),
+      settings: initialSettings,
       tasks: {},
       agentNameRegistry: new Map(),
-      verbose: verbose ?? getGlobalConfig().verbose ?? false,
+      verbose: initialVerboseSetting,
       mainLoopModel: initialMainLoopModel,
       mainLoopModelForSession: null,
       isBriefOnly: initialIsBriefOnly,
-      expandedView: getGlobalConfig().showSpinnerTree ? 'teammates' : getGlobalConfig().showExpandedTodos ? 'tasks' : 'none',
+      expandedView: initialExpandedView,
       showTeammateMessagePreview: isAgentSwarmsEnabled() ? false : undefined,
       selectedIPAgentIndex: -1,
       coordinatorTaskIndex: -1,
@@ -2992,7 +3025,7 @@ async function run(): Promise<CommanderCommand> {
       },
       attribution: createEmptyAttributionState(),
       thinkingEnabled,
-      promptSuggestionEnabled: shouldEnablePromptSuggestion(),
+      promptSuggestionEnabled: initialPromptSuggestionEnabled,
       sessionHooks: new Map(),
       inbox: {
         messages: []
@@ -3023,7 +3056,7 @@ async function run(): Promise<CommanderCommand> {
       } : null,
       effortValue: parseEffortValue(options.effort) ?? getInitialEffortSetting(),
       activeOverlays: new Set<string>(),
-      fastMode: getInitialFastModeSetting(resolvedInitialModel),
+      fastMode: initialFastMode,
       ...(isAdvisorEnabled() && advisorModel && {
         advisorModel
       }),
@@ -3032,7 +3065,7 @@ async function run(): Promise<CommanderCommand> {
       // KAIROS block so Agent(name: "foo") can spawn in-process teammates
       // without TeamCreate. computeInitialTeamContext() is for tmux-spawned
       // teammates reading their own identity, not the assistant-mode leader.
-      teamContext: feature('KAIROS') ? assistantTeamContext ?? computeInitialTeamContext?.() : computeInitialTeamContext?.()
+      teamContext: initialTeamContext
     };
 
     // Add CLI initial prompt to history
@@ -3220,7 +3253,7 @@ async function run(): Promise<CommanderCommand> {
           sshSession = await createSSHSession({
             host: _pendingSSH.host,
             cwd: _pendingSSH.cwd,
-            localVersion: MACRO.VERSION,
+            localVersion: RUNTIME_MACRO.VERSION,
             permissionMode: _pendingSSH.permissionMode,
             dangerouslySkipPermissions: _pendingSSH.dangerouslySkipPermissions,
             extraCliArgs: _pendingSSH.extraCliArgs
@@ -3353,6 +3386,7 @@ async function run(): Promise<CommanderCommand> {
       }, renderAndRun);
       return;
     } else if (options.resume || options.fromPr || teleport || remote !== null) {
+      logForDebugging('[STARTUP] entering resume/teleport/remote branch');
       // Handle resume flow - from file (ant-only), session ID, or interactive selector
 
       // Clear stale caches before resuming to ensure fresh file/skill discovery
@@ -3804,8 +3838,9 @@ async function run(): Promise<CommanderCommand> {
         initialMessages,
         pendingHookMessages
       }, renderAndRun);
+      logForDebugging('[STARTUP] launchRepl returned');
     }
-  }).version(`${MACRO.VERSION} (Kora OS)`, '-v, --version', 'Output the version number');
+  }).version(`${RUNTIME_MACRO.VERSION} (Kora OS)`, '-v, --version', 'Output the version number');
 
   // Worktree flags
   program.option('-w, --worktree [name]', 'Create a new git worktree for this session (optionally specify a name)');

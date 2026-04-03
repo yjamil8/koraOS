@@ -20,6 +20,7 @@ import {
 } from '../context.js'
 import { isEnvTruthy } from '../envUtils.js'
 import { getModelStrings, resolveOverriddenModel } from './modelStrings.js'
+import { getAntModelOverrideConfig, resolveAntModel } from './antModels.js'
 import { formatModelPricing, getOpus46CostTier } from '../modelCost.js'
 import { getSettings_DEPRECATED } from '../settings/settings.js'
 import type { PermissionMode } from '../permissions/PermissionMode.js'
@@ -32,6 +33,7 @@ import { capitalize } from '../stringUtils.js'
 export type ModelShortName = string
 export type ModelName = string
 export type ModelSetting = ModelName | ModelAlias | null
+const LOCAL_DEFAULT_MODEL: ModelName = 'qwen/qwen3.5-35b-a3b'
 
 export function getSmallFastModel(): ModelName {
   return process.env.ANTHROPIC_SMALL_FAST_MODEL || getDefaultHaikuModel()
@@ -59,22 +61,12 @@ export function isNonCustomOpusModel(model: ModelName): boolean {
  * 4. Settings (from user's saved settings)
  */
 export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
-  let specifiedModel: ModelSetting | undefined
-
   const modelOverride = getMainLoopModelOverride()
   if (modelOverride !== undefined) {
-    specifiedModel = modelOverride
-  } else {
-    const settings = getSettings_DEPRECATED() || {}
-    specifiedModel = process.env.ANTHROPIC_MODEL || settings.model || undefined
+    return modelOverride
   }
 
-  // Ignore the user-specified model if it's not in the availableModels allowlist.
-  if (specifiedModel && !isModelAllowed(specifiedModel)) {
-    return undefined
-  }
-
-  return specifiedModel
+  return LOCAL_DEFAULT_MODEL
 }
 
 /**
@@ -176,27 +168,7 @@ export function getRuntimeMainLoopModel(params: {
  * @returns The default model setting to use
  */
 export function getDefaultMainLoopModelSetting(): ModelName | ModelAlias {
-  // Ants default to defaultModel from flag config, or Opus 1M if not configured
-  if (process.env.USER_TYPE === 'ant') {
-    return (
-      getAntModelOverrideConfig()?.defaultModel ??
-      getDefaultOpusModel() + '[1m]'
-    )
-  }
-
-  // Max users get Opus as default
-  if (isMaxSubscriber()) {
-    return getDefaultOpusModel() + (isOpus1mMergeEnabled() ? '[1m]' : '')
-  }
-
-  // Team Premium gets Opus (same as Max)
-  if (isTeamPremiumSubscriber()) {
-    return getDefaultOpusModel() + (isOpus1mMergeEnabled() ? '[1m]' : '')
-  }
-
-  // PAYG (1P and 3P), Enterprise, Team Standard, and Pro get Sonnet as default
-  // Note that PAYG (3P) may default to an older Sonnet model
-  return getDefaultSonnetModel()
+  return LOCAL_DEFAULT_MODEL
 }
 
 /**

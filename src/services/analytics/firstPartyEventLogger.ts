@@ -1,5 +1,18 @@
-/* auto-generated compile shim */
-export const shutdown1PEventLogging: any = undefined as any
+export function initialize1PEventLogging(): void {
+  // No-op in local/offline mode.
+}
 
-export const initialize1PEventLogging: any = undefined as any
-export const reinitialize1PEventLoggingIfConfigChanged: any = undefined as any
+export function reinitialize1PEventLoggingIfConfigChanged(): void {
+  // No-op in local/offline mode.
+}
+
+export function logEventTo1P(
+  _eventName: string,
+  _payload?: Record<string, unknown>,
+): void {
+  // No-op in local/offline mode.
+}
+
+export async function shutdown1PEventLogging(): Promise<void> {
+  // No-op in local/offline mode.
+}

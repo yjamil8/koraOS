@@ -1,8 +1,22 @@
+#!/usr/bin/env bun
 import { feature } from 'bun:bundle';
 
 // Bugfix for corepack auto-pinning, which adds yarnpkg to peoples' package.jsons
 // eslint-disable-next-line custom-rules/no-top-level-side-effects
 process.env.COREPACK_ENABLE_AUTO_PIN = '0';
+
+// Source-run fallback: production builds inject MACRO at build time.
+// Running directly from TS (bun run src/entrypoints/cli.tsx) needs a runtime default.
+// eslint-disable-next-line custom-rules/no-top-level-side-effects
+(globalThis as any).MACRO ??= {
+  VERSION: '1.0.0-dev',
+  BUILD_TIME: '',
+  PACKAGE_URL: 'kora-os',
+  NATIVE_PACKAGE_URL: 'kora-os-native',
+  FEEDBACK_CHANNEL: 'local-feedback',
+  ISSUES_EXPLAINER: 'open an issue',
+  VERSION_CHANGELOG: '',
+};
 
 // Set max heap size for child processes in CCR environments (containers have 16GB)
 // eslint-disable-next-line custom-rules/no-top-level-side-effects, custom-rules/no-process-env-top-level, custom-rules/safe-env-boolean-check
@@ -32,12 +46,13 @@ if (feature('ABLATION_BASELINE') && process.env.CLAUDE_CODE_ABLATION_BASELINE) {
  */
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
+  const runtimeVersion = typeof MACRO !== 'undefined' ? MACRO.VERSION : '1.0.0-dev';
 
   // Fast-path for --version/-v: zero module loading needed
   if (args.length === 1 && (args[0] === '--version' || args[0] === '-v' || args[0] === '-V')) {
     // MACRO.VERSION is inlined at build time
     // biome-ignore lint/suspicious/noConsole:: intentional console output
-    console.log(`${MACRO.VERSION} (Kora OS)`);
+    console.log(`${runtimeVersion} (Kora OS)`);
     return;
   }
 

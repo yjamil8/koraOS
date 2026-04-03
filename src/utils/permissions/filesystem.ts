@@ -49,6 +49,8 @@ import type { PermissionUpdate } from './PermissionUpdateSchema.js'
 import { getRuleByContentsForToolName } from './permissions.js'
 
 declare const MACRO: { VERSION: string }
+const RUNTIME_VERSION =
+  typeof MACRO !== 'undefined' && MACRO.VERSION ? MACRO.VERSION : '1.0.0-dev'
 
 /**
  * Dangerous files that should be protected from auto-editing.
@@ -365,7 +367,7 @@ export const getClaudeTempDir = memoize(function getClaudeTempDir(): string {
 export const getBundledSkillsRoot = memoize(
   function getBundledSkillsRoot(): string {
     const nonce = randomBytes(16).toString('hex')
-    return join(getClaudeTempDir(), 'bundled-skills', MACRO.VERSION, nonce)
+    return join(getClaudeTempDir(), 'bundled-skills', RUNTIME_VERSION, nonce)
   },
 )
 

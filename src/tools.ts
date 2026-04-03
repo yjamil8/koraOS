@@ -212,7 +212,7 @@ export function getAllBaseTools(): Tools {
     SkillTool,
     EnterPlanModeTool,
     ...(process.env.USER_TYPE === 'ant' ? [ConfigTool] : []),
-    ...(process.env.USER_TYPE === 'ant' ? [TungstenTool] : []),
+    ...(process.env.USER_TYPE === 'ant' && TungstenTool ? [TungstenTool] : []),
     ...(SuggestBackgroundPRTool ? [SuggestBackgroundPRTool] : []),
     ...(WebBrowserTool ? [WebBrowserTool] : []),
     ...(isTodoV2Enabled()

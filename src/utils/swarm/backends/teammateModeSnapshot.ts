@@ -8,7 +8,6 @@
 
 import { getGlobalConfig } from '../../../utils/config.js'
 import { logForDebugging } from '../../../utils/debug.js'
-import { logError } from '../../../utils/log.js'
 
 export type TeammateMode = 'auto' | 'tmux' | 'in-process'
 
@@ -74,11 +73,10 @@ export function captureTeammateModeSnapshot(): void {
  */
 export function getTeammateModeFromSnapshot(): TeammateMode {
   if (initialTeammateMode === null) {
-    // This indicates an initialization bug - capture should happen in setup()
-    logError(
-      new Error(
-        'getTeammateModeFromSnapshot called before capture - this indicates an initialization bug',
-      ),
+    // Startup should normally capture this, but local-mode initialization
+    // can still race in some paths. Recover in-place instead of crashing.
+    logForDebugging(
+      '[TeammateModeSnapshot] requested before capture; capturing fallback snapshot',
     )
     captureTeammateModeSnapshot()
   }

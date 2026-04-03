@@ -350,7 +350,7 @@ export function FullscreenLayout(t0) {
     const t9 = padCollapsed ? 0 : 1;
     let t10;
     if ($[9] !== scrollable) {
-      t10 = <ScrollChromeContext value={chromeCtx}>{scrollable}</ScrollChromeContext>;
+      t10 = <ScrollChromeContext.Provider value={chromeCtx}>{scrollable}</ScrollChromeContext.Provider>;
       $[9] = scrollable;
       $[10] = t10;
     } else {
@@ -419,11 +419,11 @@ export function FullscreenLayout(t0) {
     }
     let t18;
     if ($[33] !== columns || $[34] !== modal || $[35] !== modalScrollRef || $[36] !== terminalRows) {
-      t18 = modal != null && <ModalContext value={{
+      t18 = modal != null && <ModalContext.Provider value={{
         rows: terminalRows - MODAL_TRANSCRIPT_PEEK - 1,
         columns: columns - 4,
         scrollRef: modalScrollRef ?? null
-      }}><Box position="absolute" bottom={0} left={0} right={0} maxHeight={terminalRows - MODAL_TRANSCRIPT_PEEK} flexDirection="column" overflow="hidden" opaque={true}><Box flexShrink={0}><Text color="permission">{"\u2594".repeat(columns)}</Text></Box><Box flexDirection="column" paddingX={2} flexShrink={0} overflow="hidden">{modal}</Box></Box></ModalContext>;
+      }}><Box position="absolute" bottom={0} left={0} right={0} maxHeight={terminalRows - MODAL_TRANSCRIPT_PEEK} flexDirection="column" overflow="hidden" opaque={true}><Box flexShrink={0}><Text color="permission">{"\u2594".repeat(columns)}</Text></Box><Box flexDirection="column" paddingX={2} flexShrink={0} overflow="hidden">{modal}</Box></Box></ModalContext.Provider>;
       $[33] = columns;
       $[34] = modal;
       $[35] = modalScrollRef;

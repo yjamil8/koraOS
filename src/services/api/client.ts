@@ -29,6 +29,8 @@ import {
   isEnvTruthy,
 } from '../../utils/envUtils.js'
 
+const LOCAL_LM_STUDIO_BASE_URL = 'http://192.168.1.200:1234'
+
 /**
  * Environment variables for different client types:
  *
@@ -300,7 +302,7 @@ export async function getAnthropicClient({
   return new Anthropic({
     apiKey: apiKey || 'local',
     authToken: undefined,
-    baseURL: 'http://localhost:11434',
+    baseURL: LOCAL_LM_STUDIO_BASE_URL,
     ...ARGS,
     ...(isDebugToStdErr() && { logger: createStderrLogger() }),
   })

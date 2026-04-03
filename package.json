@@ -5,7 +5,7 @@
   "type": "module",
   "main": "src/entrypoints/cli.tsx",
   "bin": {
-    "kora": "./src/main.tsx"
+    "kora": "./src/entrypoints/cli.tsx"
   },
   "scripts": {
     "build": "bun run scripts/build.ts",

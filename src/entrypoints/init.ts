@@ -121,15 +121,22 @@ export const init = memoize(async (): Promise<void> => {
     // can await remote settings loading. The promise includes a timeout to prevent
     // deadlocks if loadRemoteManagedSettings() is never called (e.g., Agent SDK tests).
     if (isEligibleForRemoteManagedSettings()) {
+      logForDebugging('[init] initializeRemoteManagedSettingsLoadingPromise start')
       initializeRemoteManagedSettingsLoadingPromise()
+      logForDebugging('[init] initializeRemoteManagedSettingsLoadingPromise done')
     }
     if (isPolicyLimitsEligible()) {
+      logForDebugging('[init] initializePolicyLimitsLoadingPromise start')
       initializePolicyLimitsLoadingPromise()
+      logForDebugging('[init] initializePolicyLimitsLoadingPromise done')
     }
     profileCheckpoint('init_after_remote_settings_check')
+    logForDebugging('[init] after remote settings/policy init')
 
     // Record the first start time
+    logForDebugging('[init] recordFirstStartTime start')
     recordFirstStartTime()
+    logForDebugging('[init] recordFirstStartTime done')
 
     // Configure global mTLS settings
     const mtlsStart = Date.now()

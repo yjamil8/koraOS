@@ -1,7 +1,15 @@
-/* auto-generated compile shim */
-export const initializePolicyLimitsLoadingPromise: any = undefined as any
-export const isPolicyAllowed: any = undefined as any
-export const isPolicyLimitsEligible: any = undefined as any
-export const loadPolicyLimits: any = undefined as any
-export const refreshPolicyLimits: any = undefined as any
-export const waitForPolicyLimitsToLoad: any = undefined as any
+export function isPolicyLimitsEligible(): boolean {
+  return false;
+}
+
+export function initializePolicyLimitsLoadingPromise(): void {}
+
+export async function loadPolicyLimits(): Promise<void> {}
+
+export async function refreshPolicyLimits(): Promise<void> {}
+
+export async function waitForPolicyLimitsToLoad(): Promise<void> {}
+
+export function isPolicyAllowed(_policyKey: string): boolean {
+  return true;
+}

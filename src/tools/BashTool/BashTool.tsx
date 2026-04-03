@@ -55,6 +55,7 @@ const EOL = '\n';
 const PROGRESS_THRESHOLD_MS = 2000; // Show progress after 2 seconds
 // In assistant mode, blocking bash auto-backgrounds after this many ms in the main agent
 const ASSISTANT_BLOCKING_BUDGET_MS = 15_000;
+const AUTONOMOUS_MUTATING_TOOL_DENY_MESSAGE = 'Error: Autonomous execution of this tool is denied by system policy. You must use an allowlisted tool or request user intervention.';
 
 // Search commands for collapsible display (grep, find, etc.)
 const BASH_SEARCH_COMMANDS = new Set(['find', 'grep', 'rg', 'ag', 'ack', 'locate', 'which', 'whereis']);
@@ -537,6 +538,18 @@ export const BashTool = buildTool({
     };
   },
   async checkPermissions(input, context): Promise<PermissionResult> {
+    const appState = context.getAppState();
+    const shouldBypassPermissions = appState.toolPermissionContext.mode === 'bypassPermissions' || appState.toolPermissionContext.mode === 'plan' && appState.toolPermissionContext.isBypassPermissionsModeAvailable;
+    if (appState.toolPermissionContext.shouldAvoidPermissionPrompts && !shouldBypassPermissions) {
+      return {
+        behavior: 'deny',
+        message: AUTONOMOUS_MUTATING_TOOL_DENY_MESSAGE,
+        decisionReason: {
+          type: 'asyncAgent',
+          reason: AUTONOMOUS_MUTATING_TOOL_DENY_MESSAGE
+        }
+      };
+    }
     return bashToolHasPermission(input, context);
   },
   renderToolUseMessage,

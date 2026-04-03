@@ -9,6 +9,7 @@ import type { Tool, ToolPermissionContext, ToolUseContext } from '../../Tool.js'
 import { AGENT_TOOL_NAME } from '../../tools/AgentTool/constants.js'
 import { shouldUseSandbox } from '../../tools/BashTool/shouldUseSandbox.js'
 import { BASH_TOOL_NAME } from '../../tools/BashTool/toolName.js'
+import { FILE_WRITE_TOOL_NAME } from '../../tools/FileWriteTool/prompt.js'
 import { POWERSHELL_TOOL_NAME } from '../../tools/PowerShellTool/toolName.js'
 import { REPL_TOOL_NAME } from '../../tools/REPLTool/constants.js'
 import type { AssistantMessage } from '../../types/message.js'
@@ -105,6 +106,12 @@ import {
 } from './yoloClassifier.js'
 
 const CLASSIFIER_FAIL_CLOSED_REFRESH_MS = 30 * 60 * 1000 // 30 minutes
+const AUTONOMOUS_MUTATING_TOOL_DENY_MESSAGE =
+  'Error: Autonomous execution of this tool is denied by system policy. You must use an allowlisted tool or request user intervention.'
+const AUTONOMOUS_MUTATING_TOOLS = new Set<string>([
+  BASH_TOOL_NAME,
+  FILE_WRITE_TOOL_NAME,
+])
 
 const PERMISSION_RULE_SOURCES = [
   ...SETTING_SOURCES,
@@ -477,6 +484,26 @@ export const hasPermissionsToUseTool: CanUseToolFn = async (
   assistantMessage,
   toolUseID,
 ): Promise<PermissionDecision> => {
+  const appState = context.getAppState()
+  const shouldBypassPermissions =
+    appState.toolPermissionContext.mode === 'bypassPermissions' ||
+    (appState.toolPermissionContext.mode === 'plan' &&
+      appState.toolPermissionContext.isBypassPermissionsModeAvailable)
+  const shouldDenyAutonomousMutatingTool =
+    appState.toolPermissionContext.shouldAvoidPermissionPrompts &&
+    !shouldBypassPermissions &&
+    AUTONOMOUS_MUTATING_TOOLS.has(tool.name)
+  if (shouldDenyAutonomousMutatingTool) {
+    return {
+      behavior: 'deny',
+      message: AUTONOMOUS_MUTATING_TOOL_DENY_MESSAGE,
+      decisionReason: {
+        type: 'asyncAgent',
+        reason: AUTONOMOUS_MUTATING_TOOL_DENY_MESSAGE,
+      },
+    }
+  }
+
   const result = await hasPermissionsToUseToolInner(tool, input, context)
 
 

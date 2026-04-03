@@ -112,7 +112,7 @@ async function main(): Promise<void> {
   // perf-sensitive. No enableConfigs(), no analytics sinks at this layer —
   // workers are lean. If a worker kind needs configs/auth (assistant will),
   // it calls them inside its run() fn.
-  if (feature('DAEMON') && args[0] === '--daemon-worker') {
+  if (args[0] === '--daemon-worker') {
     const {
       runDaemonWorker
     } = await import('../daemon/workerRegistry.js');
@@ -177,7 +177,7 @@ async function main(): Promise<void> {
   }
 
   // Fast-path for `kora daemon [subcommand]`: long-running supervisor.
-  if (feature('DAEMON') && args[0] === 'daemon') {
+  if (args[0] === 'daemon') {
     profileCheckpoint('cli_daemon_path');
     const {
       enableConfigs

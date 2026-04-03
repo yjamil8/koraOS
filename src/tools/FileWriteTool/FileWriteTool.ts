@@ -91,6 +91,9 @@ type OutputSchema = ReturnType<typeof outputSchema>
 export type Output = z.infer<OutputSchema>
 export type FileWriteToolInput = InputSchema
 
+const AUTONOMOUS_MUTATING_TOOL_DENY_MESSAGE =
+  'Error: Autonomous execution of this tool is denied by system policy. You must use an allowlisted tool or request user intervention.'
+
 export const FileWriteTool = buildTool({
   name: FILE_WRITE_TOOL_NAME,
   searchHint: 'create or overwrite files',
@@ -134,6 +137,23 @@ export const FileWriteTool = buildTool({
   },
   async checkPermissions(input, context): Promise<PermissionDecision> {
     const appState = context.getAppState()
+    const shouldBypassPermissions =
+      appState.toolPermissionContext.mode === 'bypassPermissions' ||
+      (appState.toolPermissionContext.mode === 'plan' &&
+        appState.toolPermissionContext.isBypassPermissionsModeAvailable)
+    if (
+      appState.toolPermissionContext.shouldAvoidPermissionPrompts &&
+      !shouldBypassPermissions
+    ) {
+      return {
+        behavior: 'deny',
+        message: AUTONOMOUS_MUTATING_TOOL_DENY_MESSAGE,
+        decisionReason: {
+          type: 'asyncAgent',
+          reason: AUTONOMOUS_MUTATING_TOOL_DENY_MESSAGE,
+        },
+      }
+    }
     return checkWritePermissionForTool(
       FileWriteTool,
       input,

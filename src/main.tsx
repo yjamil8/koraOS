@@ -2553,8 +2553,16 @@ async function run(): Promise<CommanderCommand> {
       assistantActivationPath: feature('KAIROS') && kairosEnabled ? assistantModule?.getAssistantActivationPath() : undefined
     });
 
-    // Log context metrics once at initialization
-    void logContextMetrics(regularMcpConfigs, toolPermissionContext);
+    // Log context metrics once at initialization, but defer in interactive
+    // mode so this non-critical telemetry doesn't contend with first-turn TTFT.
+    if (isNonInteractiveSession) {
+      void logContextMetrics(regularMcpConfigs, toolPermissionContext);
+    } else {
+      const contextMetricsTimer = setTimeout(() => {
+        void logContextMetrics(regularMcpConfigs, toolPermissionContext);
+      }, 5000);
+      contextMetricsTimer.unref?.();
+    }
     void logPermissionContextForAnts(null, 'initialization');
     logManagedSettings();
 

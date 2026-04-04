@@ -21,6 +21,10 @@ import { logForDebugging } from './debug.js'
 import { safeParseJSON } from './json.js'
 import { lazySchema } from './lazySchema.js'
 import { extractTextContent } from './messages.js'
+import {
+  getAPIProvider,
+  isFirstPartyAnthropicBaseUrl,
+} from './model/providers.js'
 import { asSystemPrompt } from './systemPromptType.js'
 
 const MAX_CONVERSATION_TEXT = 1000
@@ -69,6 +73,25 @@ Bad (wrong case): {"title": "Fix Login Button On Mobile"}`
 
 const titleSchema = lazySchema(() => z.object({ title: z.string() }))
 
+function deriveFallbackTitle(description: string): string | null {
+  const normalized = description.replace(/\s+/g, ' ').trim()
+  if (!normalized) return null
+
+  const withoutPrefixes = normalized.replace(/^[/!#>\-\s]+/, '').trim()
+  const source = withoutPrefixes || normalized
+  const MAX_TITLE_LEN = 75
+  if (source.length <= MAX_TITLE_LEN) {
+    return source
+  }
+
+  const truncated = source.slice(0, MAX_TITLE_LEN)
+  const lastSpace = truncated.lastIndexOf(' ')
+  if (lastSpace > 20) {
+    return `${truncated.slice(0, lastSpace)}...`
+  }
+  return `${truncated}...`
+}
+
 /**
  * Generate a sentence-case session title from a description or first message.
  * Returns null on error or if Haiku returns an unparseable response.
@@ -82,6 +105,17 @@ export async function generateSessionTitle(
 ): Promise<string | null> {
   const trimmed = description.trim()
   if (!trimmed) return null
+
+  // Session title generation is non-critical. Avoid spawning an extra
+  // small-fast model query when running on non-first-party endpoints
+  // (e.g. local OpenAI-compatible servers) to prevent cross-model churn
+  // and startup contention with the user's main query.
+  if (
+    getAPIProvider() !== 'firstParty' ||
+    !isFirstPartyAnthropicBaseUrl()
+  ) {
+    return deriveFallbackTitle(trimmed)
+  }
 
   try {
     const result = await queryHaiku({

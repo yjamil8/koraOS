@@ -2674,13 +2674,11 @@ export function REPL({
     // Mark onboarding as complete when any user message is sent to Kora
     void maybeMarkProjectOnboardingComplete();
 
-    // Extract a session title from the first real user message. One-shot
-    // via ref (was tengu_birch_mist experiment: first-message-only to save
-    // Haiku calls). The ref replaces the old `messages.length <= 1` check,
-    // which was broken by SessionStart hook messages (prepended via
-    // useDeferredHookMessages) and attachment messages (appended by
-    // processTextPrompt) — both pushed length past 1 on turn one, so the
-    // title silently fell through to the "Kora OS" default.
+    let pendingSessionTitleDescription: string | null = null;
+    // Extract a session title candidate from the first real user message.
+    // One-shot via ref (was tengu_birch_mist experiment: first-message-only to
+    // save title-generation calls). Generate it only after the main turn
+    // completes so title inference never competes with the first response.
     if (!titleDisabled && !sessionTitle && !agentTitle && !haikuTitleAttemptedRef.current) {
       const firstUserMessage = newMessages.find(m => m.type === 'user' && !m.isMeta);
       const text = firstUserMessage?.type === 'user' ? getContentText(firstUserMessage.message.content) : null;
@@ -2689,12 +2687,7 @@ export function REPL({
       // (/help → <command-name>), and bash-mode (!cmd → <bash-input>).
       // None of these are the user's topic; wait for real prose.
       if (text && !text.startsWith(`<${LOCAL_COMMAND_STDOUT_TAG}>`) && !text.startsWith(`<${COMMAND_MESSAGE_TAG}>`) && !text.startsWith(`<${COMMAND_NAME_TAG}>`) && !text.startsWith(`<${BASH_INPUT_TAG}>`)) {
-        haikuTitleAttemptedRef.current = true;
-        void generateSessionTitle(text, new AbortController().signal).then(title => {
-          if (title) setHaikuTitle(title);else haikuTitleAttemptedRef.current = false;
-        }, () => {
-          haikuTitleAttemptedRef.current = false;
-        });
+        pendingSessionTitleDescription = text;
       }
     }
 
@@ -2851,6 +2844,15 @@ export function REPL({
 
     // Signal that a query turn has completed successfully
     await onTurnComplete?.(messagesRef.current);
+
+    if (pendingSessionTitleDescription) {
+      haikuTitleAttemptedRef.current = true;
+      void generateSessionTitle(pendingSessionTitleDescription, new AbortController().signal).then(title => {
+        if (title) setHaikuTitle(title);else haikuTitleAttemptedRef.current = false;
+      }, () => {
+        haikuTitleAttemptedRef.current = false;
+      });
+    }
   }, [initialMcpClients, resetLoadingState, getToolUseContext, toolPermissionContext, setAppState, customSystemPrompt, onTurnComplete, appendSystemPrompt, canUseTool, mainThreadAgentDefinition, onQueryEvent, sessionTitle, titleDisabled]);
   const onQuery = useCallback(async (newMessages: MessageType[], abortController: AbortController, shouldQuery: boolean, additionalAllowedTools: string[], mainLoopModelParam: string, onBeforeQueryCallback?: (input: string, newMessages: MessageType[]) => Promise<boolean>, input?: string, effort?: EffortValue): Promise<void> => {
     // If this is a teammate, mark them as active when starting a turn

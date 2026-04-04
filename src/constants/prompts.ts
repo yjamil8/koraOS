@@ -455,10 +455,10 @@ export async function getSystemPrompt(
   }
 
   const cwd = getCwd()
-  const [skillToolCommands, outputStyleConfig, envInfo] = await Promise.all([
+  const envInfoPromise = computeSimpleEnvInfo(model, additionalWorkingDirectories)
+  const [skillToolCommands, outputStyleConfig] = await Promise.all([
     getSkillToolCommands(cwd),
     getOutputStyleConfig(),
-    computeSimpleEnvInfo(model, additionalWorkingDirectories),
   ])
 
   const settings = getInitialSettings()
@@ -475,7 +475,7 @@ export async function getSystemPrompt(
 ${CYBER_RISK_INSTRUCTION}`,
       getSystemRemindersSection(),
       await loadMemoryPrompt(),
-      envInfo,
+      await envInfoPromise,
       getLanguageSection(settings.language),
       // When delta enabled, instructions are announced via persisted
       // mcp_instructions_delta attachments (attachments.ts) instead.
@@ -498,7 +498,7 @@ ${CYBER_RISK_INSTRUCTION}`,
       getAntModelOverrideSection(),
     ),
     systemPromptSection('env_info_simple', () =>
-      computeSimpleEnvInfo(model, additionalWorkingDirectories),
+      envInfoPromise,
     ),
     systemPromptSection('language', () =>
       getLanguageSection(settings.language),

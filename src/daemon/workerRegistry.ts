@@ -2,6 +2,7 @@ import { startDaemonHttpServer } from './httpServer.js'
 import { init } from '../entrypoints/init.js'
 import { KairosLoopController } from './kairosLoop.js'
 import { syncActiveSessions } from './sessions.js'
+import { JustBidWatcherController } from './justbidWatcher.js'
 
 type WorkerKind = 'supervisor'
 
@@ -10,8 +11,11 @@ async function runSupervisorWorker(): Promise<void> {
 
   await init()
   const loopController = new KairosLoopController()
+  const justBidWatcher = new JustBidWatcherController()
   await loopController.initialize()
+  await justBidWatcher.initialize()
   loopController.start()
+  justBidWatcher.start()
   const httpServer = startDaemonHttpServer({ loopController })
   let shuttingDown = false
   let resolveShutdown: (() => void) | null = null
@@ -30,6 +34,7 @@ async function runSupervisorWorker(): Promise<void> {
     shuttingDown = true
     clearInterval(syncInterval)
     loopController.stop()
+    justBidWatcher.stop()
     httpServer.stop()
     resolveShutdown?.()
   }

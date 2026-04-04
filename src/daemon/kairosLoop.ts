@@ -18,12 +18,16 @@ import {
   getUserMessageText,
   hasSuccessfulToolCall,
 } from 'src/utils/messages.js'
+import { parseUserSpecifiedModel } from 'src/utils/model/model.js'
 import {
   createFileStateCacheWithSizeLimit,
   READ_FILE_STATE_CACHE_SIZE,
 } from 'src/utils/fileStateCache.js'
 import { hasPermissionsToUseTool } from 'src/utils/permissions/permissions.js'
-import { getSettings_DEPRECATED } from 'src/utils/settings/settings.js'
+import {
+  getSettings_DEPRECATED,
+  getSettingsWithSources,
+} from 'src/utils/settings/settings.js'
 import { attachSession, getSession, listSessions, updateSessionHistory } from './sessions.js'
 import { readLoopState, type StoredLoopState, writeLoopState } from './loopState.js'
 
@@ -220,6 +224,42 @@ function getRuntimeValue(name: 'TELEGRAM_BOT_TOKEN' | 'TELEGRAM_CHAT_ID'):
   }
 
   return undefined
+}
+
+function getFreshConfiguredModel(): string | null {
+  const envModel = process.env.ANTHROPIC_MODEL?.trim()
+  if (envModel) {
+    return envModel
+  }
+
+  try {
+    const configuredModel = getSettingsWithSources().effective.model
+    if (typeof configuredModel === 'string') {
+      const trimmed = configuredModel.trim()
+      if (trimmed.length > 0) {
+        return trimmed
+      }
+    }
+  } catch {
+    // Settings refresh can fail during startup races; fall back to history/default.
+  }
+
+  return null
+}
+
+export function resolveDaemonTurnModelFromSources(input: {
+  configuredModel: string | null
+}): string | undefined {
+  if (!input.configuredModel) {
+    return undefined
+  }
+  return parseUserSpecifiedModel(input.configuredModel)
+}
+
+function resolveDaemonTurnModel(): string | undefined {
+  return resolveDaemonTurnModelFromSources({
+    configuredModel: getFreshConfiguredModel(),
+  })
 }
 
 function truncateForPrompt(input: string): string {
@@ -703,6 +743,7 @@ export class KairosLoopController {
     const commands = await getCommands(session.projectPath)
     const readFileCache = createFileStateCacheWithSizeLimit(READ_FILE_STATE_CACHE_SIZE)
     const mutableMessages = Array.isArray(session.history) ? [...session.history] : []
+    const daemonTurnModel = resolveDaemonTurnModel()
     const initialLength = mutableMessages.length
     const abortController = new AbortController()
     let sawIdle = false
@@ -753,6 +794,7 @@ export class KairosLoopController {
         getAppState,
         setAppState,
         abortController,
+        userSpecifiedModel: daemonTurnModel,
       })) {
         const assistantText = extractAssistantTextFromSdkMessage(message)
         if (assistantText?.trim() === IDLE_TOKEN) {

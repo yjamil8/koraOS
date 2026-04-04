@@ -1,5 +1,11 @@
 import { spawn } from 'child_process'
 import {
+  getDaemonLoopStatus,
+  pauseDaemonLoop,
+  resumeDaemonLoop,
+  tickDaemonLoop,
+} from './client.js'
+import {
   clearDaemonState,
   getDaemonStatePath,
   isPidAlive,
@@ -7,6 +13,7 @@ import {
   type StoredDaemonState,
   writeDaemonState,
 } from './state.js'
+import { KORA_DAEMON_PORT, getDaemonBaseUrl } from './config.js'
 
 const TERM_WAIT_MS = 5_000
 const KILL_WAIT_MS = 2_000
@@ -28,7 +35,9 @@ async function waitForExit(pid: number, timeoutMs: number): Promise<boolean> {
 }
 
 function printUsage(): void {
-  console.log('Usage: kora daemon <start|stop|status>')
+  console.log(
+    'Usage: kora daemon <start|stop|status|loop-status|tick|pause|resume>',
+  )
 }
 
 function getScriptPathForWorker(): string {
@@ -62,7 +71,8 @@ function startDetachedWorker(): number {
 function formatStateSummary(state: StoredDaemonState): string {
   const startedAt = new Date(state.startedAt)
   const startedAtSummary = Number.isNaN(startedAt.getTime()) ? 'unknown' : startedAt.toISOString()
-  return `PID=${state.pid} startedAt=${startedAtSummary}`
+  const endpoint = getDaemonBaseUrl(state.port ?? KORA_DAEMON_PORT)
+  return `PID=${state.pid} startedAt=${startedAtSummary} endpoint=${endpoint}`
 }
 
 async function handleStart(): Promise<void> {
@@ -80,6 +90,7 @@ async function handleStart(): Promise<void> {
     pid,
     startedAt: new Date().toISOString(),
     command: `${process.execPath} ${getScriptPathForWorker()} --daemon-worker supervisor`,
+    port: KORA_DAEMON_PORT,
   }
   await writeDaemonState(state)
 
@@ -146,6 +157,43 @@ async function handleStop(): Promise<void> {
   console.log(`Stopped daemon process ${pid}`)
 }
 
+async function assertDaemonRunning(): Promise<void> {
+  const state = await readDaemonState()
+  if (!state || !isPidAlive(state.pid)) {
+    throw new Error('Daemon is not running. Start it with: kora daemon start')
+  }
+}
+
+async function handleLoopStatus(): Promise<void> {
+  await assertDaemonRunning()
+  const loop = await getDaemonLoopStatus()
+  console.log(JSON.stringify(loop, null, 2))
+}
+
+async function handleTick(args: string[]): Promise<void> {
+  await assertDaemonRunning()
+  const sessionIdArg = args.find(arg => arg.startsWith('--session-id='))
+  const simulateMalformed = args.includes('--simulate-malformed')
+  const sessionId = sessionIdArg ? sessionIdArg.split('=')[1] : undefined
+  const response = await tickDaemonLoop({
+    sessionId,
+    simulateMalformed,
+  })
+  console.log(JSON.stringify(response, null, 2))
+}
+
+async function handlePause(): Promise<void> {
+  await assertDaemonRunning()
+  const loop = await pauseDaemonLoop()
+  console.log(JSON.stringify(loop, null, 2))
+}
+
+async function handleResume(): Promise<void> {
+  await assertDaemonRunning()
+  const loop = await resumeDaemonLoop()
+  console.log(JSON.stringify(loop, null, 2))
+}
+
 export async function daemonMain(args: string[]): Promise<void> {
   const subcommand = args[0] ?? 'status'
   switch (subcommand) {
@@ -157,6 +205,18 @@ export async function daemonMain(args: string[]): Promise<void> {
       break
     case 'status':
       await handleStatus()
+      break
+    case 'loop-status':
+      await handleLoopStatus()
+      break
+    case 'tick':
+      await handleTick(args.slice(1))
+      break
+    case 'pause':
+      await handlePause()
+      break
+    case 'resume':
+      await handleResume()
       break
     case 'help':
     case '--help':

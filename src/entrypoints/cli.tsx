@@ -45,7 +45,7 @@ if (feature('ABLATION_BASELINE') && process.env.CLAUDE_CODE_ABLATION_BASELINE) {
  * Fast-path for --version has zero imports beyond this file.
  */
 async function main(): Promise<void> {
-  const args = process.argv.slice(2);
+  let args = process.argv.slice(2);
   const runtimeVersion = typeof MACRO !== 'undefined' ? MACRO.VERSION : '1.0.0-dev';
 
   // Fast-path for --version/-v: zero module loading needed
@@ -194,6 +194,27 @@ async function main(): Promise<void> {
     return;
   }
 
+  // Fast-path for `kora session <list|attach|close>` against the local daemon.
+  if (args[0] === 'session') {
+    profileCheckpoint('cli_session_path');
+    try {
+      const {
+        daemonSessionMain
+      } = await import('../daemon/sessionCli.js');
+      const result = await daemonSessionMain(args.slice(1));
+      if (result.launchArgs) {
+        process.argv = [process.argv[0]!, process.argv[1]!, ...result.launchArgs];
+        args = process.argv.slice(2);
+      } else {
+        return;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      process.stderr.write(`${message}\n`);
+      process.exit(1);
+    }
+  }
+
   // Fast-path for `kora ps|logs|attach|kill` and `--bg`/`--background`.
   // Session management against the ~/.claude/sessions/ registry. Flag
   // literals are inlined so bg.js only loads when actually dispatching.
@@ -291,12 +312,29 @@ async function main(): Promise<void> {
   // Redirect common update flag mistakes to the update subcommand
   if (args.length === 1 && (args[0] === '--update' || args[0] === '--upgrade')) {
     process.argv = [process.argv[0]!, process.argv[1]!, 'update'];
+    args = process.argv.slice(2);
   }
 
   // --bare: set SIMPLE early so gates fire during module eval / commander
   // option building (not just inside the action handler).
   if (args.includes('--bare')) {
     process.env.CLAUDE_CODE_SIMPLE = '1';
+  }
+
+  // Auto-resume an active daemon session for this project on plain `kora`.
+  if (args.length === 0) {
+    try {
+      const {
+        maybeAutoAttachSession
+      } = await import('../daemon/sessionCli.js');
+      const launchArgs = await maybeAutoAttachSession(process.cwd());
+      if (launchArgs) {
+        process.argv = [process.argv[0]!, process.argv[1]!, ...launchArgs];
+        args = process.argv.slice(2);
+      }
+    } catch {
+      // If daemon attach fails, continue with normal startup.
+    }
   }
 
   // No special flags detected, load and run the full CLI

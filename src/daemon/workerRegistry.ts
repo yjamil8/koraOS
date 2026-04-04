@@ -1,14 +1,23 @@
+import { startDaemonHttpServer } from './httpServer.js'
+import { init } from '../entrypoints/init.js'
+import { KairosLoopController } from './kairosLoop.js'
+import { syncActiveSessions } from './sessions.js'
+
 type WorkerKind = 'supervisor'
 
 async function runSupervisorWorker(): Promise<void> {
   process.title = 'kora-daemon'
 
+  await init()
+  const loopController = new KairosLoopController()
+  await loopController.initialize()
+  loopController.start()
+  const httpServer = startDaemonHttpServer({ loopController })
   let shuttingDown = false
   let resolveShutdown: (() => void) | null = null
-  const keepAliveInterval = setInterval(() => {
-    // Keep the daemon process alive. Additional workers will be wired here in
-    // later slices.
-  }, 60_000)
+  const syncInterval = setInterval(() => {
+    void syncActiveSessions()
+  }, 2_000)
 
   const shutdownPromise = new Promise<void>(resolve => {
     resolveShutdown = resolve
@@ -19,7 +28,9 @@ async function runSupervisorWorker(): Promise<void> {
       return
     }
     shuttingDown = true
-    clearInterval(keepAliveInterval)
+    clearInterval(syncInterval)
+    loopController.stop()
+    httpServer.stop()
     resolveShutdown?.()
   }
 

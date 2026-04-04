@@ -114,6 +114,12 @@ export type KairosTickOptions = {
   }
 }
 
+export function shouldAdvanceTelegramOffsetAfterTick(
+  result: TickResult,
+): boolean {
+  return !(result.status === 'skipped' && result.reason === 'busy')
+}
+
 function nowIso(): string {
   return new Date().toISOString()
 }
@@ -497,13 +503,9 @@ export class KairosLoopController {
           username: message?.from?.username ?? message?.from?.first_name,
         },
       })
-      if (result.status === 'skipped' && result.reason === 'busy') {
+      if (!shouldAdvanceTelegramOffsetAfterTick(result)) {
         break
       }
-      if (result.status !== 'ok') {
-        break
-      }
-
       nextOffset = updateId + 1
     }
 

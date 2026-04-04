@@ -3,6 +3,7 @@ import {
   didPushNotificationSucceed,
   isHumanTelegramSender,
   resolveDaemonTurnModelFromSources,
+  shouldAdvanceTelegramOffsetAfterTick,
 } from './kairosLoop.js'
 
 describe('resolveDaemonTurnModelFromSources', () => {
@@ -89,5 +90,37 @@ describe('isHumanTelegramSender', () => {
     expect(isHumanTelegramSender({ from: { is_bot: true } })).toBe(false)
     expect(isHumanTelegramSender(undefined)).toBe(false)
     expect(isHumanTelegramSender({})).toBe(false)
+  })
+})
+
+describe('shouldAdvanceTelegramOffsetAfterTick', () => {
+  test('does not advance only for busy skip', () => {
+    expect(
+      shouldAdvanceTelegramOffsetAfterTick({
+        status: 'skipped',
+        reason: 'busy',
+      }),
+    ).toBe(false)
+  })
+
+  test('advances for ok and failed outcomes', () => {
+    expect(
+      shouldAdvanceTelegramOffsetAfterTick({
+        status: 'ok',
+        sessionId: 's',
+        idle: false,
+        assistantText: 'hi',
+      }),
+    ).toBe(true)
+
+    expect(
+      shouldAdvanceTelegramOffsetAfterTick({
+        status: 'failed',
+        sessionId: 's',
+        error: 'x',
+        consecutiveFailures: 1,
+        backoffUntil: null,
+      }),
+    ).toBe(true)
   })
 })

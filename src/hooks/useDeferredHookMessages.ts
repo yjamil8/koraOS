@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 import type { HookResultMessage, Message } from '../types/message.js'
+import { logForDebugging } from '../utils/debug.js'
 
 /**
  * Manages deferred SessionStart hook messages so the REPL can render
@@ -16,31 +17,54 @@ export function useDeferredHookMessages(
   const pendingRef = useRef(pendingHookMessages ?? null)
   const resolvedRef = useRef(!pendingHookMessages)
 
+  const applyMessages = useCallback(
+    (msgs: HookResultMessage[]) => {
+      if (msgs.length > 0) {
+        setMessages(prev => [...msgs, ...prev])
+      }
+    },
+    [setMessages],
+  )
+
   useEffect(() => {
     const promise = pendingRef.current
     if (!promise) return
     let cancelled = false
-    promise.then(msgs => {
-      if (cancelled) return
-      resolvedRef.current = true
-      pendingRef.current = null
-      if (msgs.length > 0) {
-        setMessages(prev => [...msgs, ...prev])
-      }
-    })
+    promise
+      .then(msgs => {
+        if (cancelled || resolvedRef.current) return
+        resolvedRef.current = true
+        pendingRef.current = null
+        applyMessages(msgs)
+      })
+      .catch(error => {
+        if (cancelled) return
+        resolvedRef.current = true
+        pendingRef.current = null
+        logForDebugging(`Deferred SessionStart hook failed: ${error}`, {
+          level: 'debug',
+        })
+      })
     return () => {
       cancelled = true
     }
-  }, [setMessages])
+  }, [applyMessages])
 
   return useCallback(async () => {
     if (resolvedRef.current || !pendingRef.current) return
-    const msgs = await pendingRef.current
-    if (resolvedRef.current) return
-    resolvedRef.current = true
-    pendingRef.current = null
-    if (msgs.length > 0) {
-      setMessages(prev => [...msgs, ...prev])
+
+    try {
+      const msgs = await pendingRef.current
+      if (resolvedRef.current) return
+      resolvedRef.current = true
+      pendingRef.current = null
+      applyMessages(msgs)
+    } catch (error) {
+      resolvedRef.current = true
+      pendingRef.current = null
+      logForDebugging(`Deferred SessionStart hook failed: ${error}`, {
+        level: 'debug',
+      })
     }
-  }, [setMessages])
+  }, [applyMessages])
 }

@@ -303,6 +303,7 @@ const HISTORY_STUB = {
 // up to read the start → start typing → before this fix, snapped to bottom.
 // https://anthropic.slack.com/archives/C07VBSHV7EV/p1773545449871739
 const RECENT_SCROLL_REPIN_WINDOW_MS = 3000;
+const SESSION_START_HOOK_WAIT_TIMEOUT_MS = 1500;
 
 // Use LRU cache to prevent unbounded memory growth
 // 100 files should be sufficient for most coding sessions while preventing
@@ -1311,6 +1312,27 @@ export function REPL({
   // hook messages are injected when they resolve. awaitPendingHooks()
   // must be called before the first API call so the model sees hook context.
   const awaitPendingHooks = useDeferredHookMessages(pendingHookMessages, setMessages);
+  const awaitPendingHooksBounded = useCallback(async () => {
+    let timedOut = false;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<void>(resolve => {
+      timeout = setTimeout(() => {
+        timedOut = true;
+        resolve();
+      }, SESSION_START_HOOK_WAIT_TIMEOUT_MS);
+      timeout.unref?.();
+    });
+    try {
+      await Promise.race([awaitPendingHooks(), timeoutPromise]);
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
+    if (timedOut) {
+      logForDebugging(`Deferred SessionStart hooks exceeded ${SESSION_START_HOOK_WAIT_TIMEOUT_MS}ms; continuing without waiting`, {
+        level: 'debug'
+      });
+    }
+  }, [awaitPendingHooks]);
 
   // Deferred messages for the Messages component — renders at transition
   // priority so the reconciler yields every 5ms, keeping input responsive
@@ -3104,7 +3126,7 @@ export function REPL({
       // Ensure SessionStart hook context is available before the first API
       // call. onSubmit calls this internally but the onQuery path below
       // bypasses onSubmit — hoist here so both paths see hook messages.
-      await awaitPendingHooks();
+      await awaitPendingHooksBounded();
 
       // Route all initial prompts through onSubmit to ensure UserPromptSubmit hooks fire
       // TODO: Simplify by always routing through onSubmit once it supports
@@ -3488,7 +3510,7 @@ export function REPL({
     }
 
     // Ensure SessionStart hook context is available before the first API call.
-    await awaitPendingHooks();
+    await awaitPendingHooksBounded();
     await handlePromptSubmit({
       input,
       helpers,
@@ -3544,7 +3566,7 @@ export function REPL({
   // messages array in downstream closures (PromptInput, handleAutoRunIssue).
   // Heap analysis showed ~9 REPL scopes and ~15 messages array versions
   // accumulating after #20174/#20175, all traced to this dep.
-  mainLoopModel, pastedContents, ideSelection, setUserInputOnProcessing, setAbortController, addNotification, onQuery, stashedPrompt, setStashedPrompt, setAppState, onBeforeQuery, canUseTool, remoteSession, setMessages, awaitPendingHooks, repinScroll]);
+  mainLoopModel, pastedContents, ideSelection, setUserInputOnProcessing, setAbortController, addNotification, onQuery, stashedPrompt, setStashedPrompt, setAppState, onBeforeQuery, canUseTool, remoteSession, setMessages, awaitPendingHooksBounded, repinScroll]);
 
   // Callback for when user submits input while viewing a teammate's transcript
   const onAgentSubmit = useCallback(async (input: string, task: InProcessTeammateTaskState | LocalAgentTaskState, helpers: PromptInputHelpers) => {

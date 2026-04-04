@@ -28,7 +28,13 @@ import {
   getSettings_DEPRECATED,
   getSettingsWithSources,
 } from 'src/utils/settings/settings.js'
-import { attachSession, getSession, listSessions, updateSessionHistory } from './sessions.js'
+import {
+  attachSession,
+  createSession,
+  getSession,
+  listSessions,
+  updateSessionHistory,
+} from './sessions.js'
 import { readLoopState, type StoredLoopState, writeLoopState } from './loopState.js'
 
 const WAKE_PROMPT =
@@ -597,7 +603,18 @@ export class KairosLoopController {
       this.state.backoffUntil = null
     }
 
-    const targetSession = await this.selectTargetSession(options.sessionId)
+    let targetSession = await this.selectTargetSession(options.sessionId)
+    if (!targetSession && options.telegramMessage) {
+      const created = await createSession({
+        projectPath: process.cwd(),
+      })
+      targetSession = {
+        id: created.id,
+        projectPath: created.projectPath,
+        transcriptPath: created.transcriptPath,
+      }
+    }
+
     if (!targetSession) {
       this.state.activeSessionId = null
       await writeLoopState(this.state)

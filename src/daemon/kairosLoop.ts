@@ -42,6 +42,7 @@ It is the scheduled 8:00 AM Pacific weather update.
 5. After PushNotification succeeds, respond strictly with '<idle>' and nothing else.]`
 const IDLE_TOKEN = '<idle>'
 const PUSH_NOTIFICATION_TOOL_NAME = 'PushNotification'
+const PUSH_NOTIFICATION_TOOL_ALIAS = 'PushNotificationTool'
 const TELEGRAM_PUSH_TOOL_ALIAS = 'TelegramPushTool'
 const LOOP_OWNER_ID = 'daemon-loop'
 const MORNING_WEATHER_TIMEZONE = 'America/Los_Angeles'
@@ -278,6 +279,12 @@ function truncateForTelegram(input: string): string {
 
 function stripTrailingIdleToken(input: string): string {
   return input.replace(/\s*<idle>\s*$/i, '').trim()
+}
+
+export function didPushNotificationSucceed(messages: unknown[]): boolean {
+  return [PUSH_NOTIFICATION_TOOL_NAME, PUSH_NOTIFICATION_TOOL_ALIAS, TELEGRAM_PUSH_TOOL_ALIAS].some(
+    toolName => hasSuccessfulToolCall(messages as any, toolName),
+  )
 }
 
 function buildTelegramPrompt(input: {
@@ -587,6 +594,20 @@ export class KairosLoopController {
           : WAKE_PROMPT
       const turn = await this.runNativeTurn(attached.session, prompt)
       if (turn.malformed) {
+        if (options.telegramMessage && turn.pushNotificationSucceeded) {
+          this.state.consecutiveFailures = 0
+          this.state.status = 'running'
+          this.state.backoffUntil = null
+          this.state.lastError = null
+          this.state.lastSuccessAt = nowIso()
+          await writeLoopState(this.state)
+          return {
+            status: 'ok',
+            sessionId: attached.session.id,
+            idle: turn.idle,
+            assistantText: turn.assistantText,
+          }
+        }
         return this.failTick(attached.session.id, turn.error, {
           suppressBackoff: options.telegramMessage !== undefined,
         })
@@ -812,8 +833,7 @@ export class KairosLoopController {
     const assistantText = getLastAssistantText(mutableMessages)
     const idle = sawIdle || assistantText === IDLE_TOKEN
     const pushNotificationSucceeded =
-      hasSuccessfulToolCall(mutableMessages as any, PUSH_NOTIFICATION_TOOL_NAME) ||
-      hasSuccessfulToolCall(mutableMessages as any, TELEGRAM_PUSH_TOOL_ALIAS)
+      didPushNotificationSucceed(mutableMessages as any)
     const persistedHistory = idle
       ? pruneInternalTickMessages(mutableMessages.slice(0, initialLength), prompt)
       : pruneInternalTickMessages(mutableMessages, prompt)

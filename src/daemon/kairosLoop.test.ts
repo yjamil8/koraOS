@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'bun:test'
-import { resolveDaemonTurnModelFromSources } from './kairosLoop.js'
+import {
+  didPushNotificationSucceed,
+  resolveDaemonTurnModelFromSources,
+} from './kairosLoop.js'
 
 describe('resolveDaemonTurnModelFromSources', () => {
   test('uses configured model when provided', () => {
@@ -16,5 +19,65 @@ describe('resolveDaemonTurnModelFromSources', () => {
         configuredModel: null,
       }),
     ).toBeUndefined()
+  })
+})
+
+describe('didPushNotificationSucceed', () => {
+  test('accepts canonical PushNotification tool name', () => {
+    const messages = [
+      {
+        type: 'assistant',
+        message: {
+          content: [{ type: 'tool_use', id: 'tool-1', name: 'PushNotification' }],
+        },
+      },
+      {
+        type: 'user',
+        message: {
+          content: [{ type: 'tool_result', tool_use_id: 'tool-1', content: 'ok' }],
+        },
+      },
+    ]
+    expect(didPushNotificationSucceed(messages)).toBe(true)
+  })
+
+  test('accepts PushNotificationTool alias', () => {
+    const messages = [
+      {
+        type: 'assistant',
+        message: {
+          content: [
+            { type: 'tool_use', id: 'tool-2', name: 'PushNotificationTool' },
+          ],
+        },
+      },
+      {
+        type: 'user',
+        message: {
+          content: [{ type: 'tool_result', tool_use_id: 'tool-2', content: 'ok' }],
+        },
+      },
+    ]
+    expect(didPushNotificationSucceed(messages)).toBe(true)
+  })
+
+  test('returns false when tool result is an error', () => {
+    const messages = [
+      {
+        type: 'assistant',
+        message: {
+          content: [{ type: 'tool_use', id: 'tool-3', name: 'PushNotification' }],
+        },
+      },
+      {
+        type: 'user',
+        message: {
+          content: [
+            { type: 'tool_result', tool_use_id: 'tool-3', is_error: true, content: 'failed' },
+          ],
+        },
+      },
+    ]
+    expect(didPushNotificationSucceed(messages)).toBe(false)
   })
 })

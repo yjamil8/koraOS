@@ -5,6 +5,7 @@ import {
   isHumanTelegramSender,
   resolveDaemonTurnModelFromSources,
   resolvePersistedHistoryForDaemonTurn,
+  shouldDenyPushToolUseInTelegramTurn,
   shouldAdvanceTelegramOffsetAfterTick,
 } from './kairosLoop.js'
 
@@ -174,5 +175,34 @@ describe('resolvePersistedHistoryForDaemonTurn', () => {
 
     expect(persisted).toHaveLength(1)
     expect((persisted[0] as any).message.content).toBe('keep me')
+  })
+})
+
+describe('shouldDenyPushToolUseInTelegramTurn', () => {
+  test('denies second push tool use in telegram mode', () => {
+    expect(
+      shouldDenyPushToolUseInTelegramTurn({
+        stopAfterFirstPush: true,
+        pushToolAttempted: true,
+        toolName: 'PushNotification',
+      }),
+    ).toBe(true)
+  })
+
+  test('allows first push and non-push tools', () => {
+    expect(
+      shouldDenyPushToolUseInTelegramTurn({
+        stopAfterFirstPush: true,
+        pushToolAttempted: false,
+        toolName: 'PushNotification',
+      }),
+    ).toBe(false)
+    expect(
+      shouldDenyPushToolUseInTelegramTurn({
+        stopAfterFirstPush: true,
+        pushToolAttempted: true,
+        toolName: 'Read',
+      }),
+    ).toBe(false)
   })
 })

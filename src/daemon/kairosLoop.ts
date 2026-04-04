@@ -334,6 +334,26 @@ export function didPushNotificationSucceed(messages: unknown[]): boolean {
   )
 }
 
+function isPushNotificationToolName(name: string | undefined): boolean {
+  return (
+    name === PUSH_NOTIFICATION_TOOL_NAME ||
+    name === PUSH_NOTIFICATION_TOOL_ALIAS ||
+    name === TELEGRAM_PUSH_TOOL_ALIAS
+  )
+}
+
+export function shouldDenyPushToolUseInTelegramTurn(input: {
+  stopAfterFirstPush: boolean
+  pushToolAttempted: boolean
+  toolName: string | undefined
+}): boolean {
+  return (
+    input.stopAfterFirstPush &&
+    input.pushToolAttempted &&
+    isPushNotificationToolName(input.toolName)
+  )
+}
+
 function buildTelegramPrompt(input: {
   text: string
   username?: string
@@ -648,6 +668,7 @@ export class KairosLoopController {
           : WAKE_PROMPT
       const turn = await this.runNativeTurn(attached.session, prompt, {
         preserveSessionHistory: options.telegramMessage !== undefined,
+        stopAfterFirstPush: options.telegramMessage !== undefined,
       })
       if (turn.malformed) {
         if (options.telegramMessage && turn.pushNotificationSucceeded) {
@@ -799,6 +820,7 @@ export class KairosLoopController {
     history: unknown[]
   }, prompt: string, options: {
     preserveSessionHistory?: boolean
+    stopAfterFirstPush?: boolean
   } = {}): Promise<{
     idle: boolean
     malformed: boolean
@@ -828,6 +850,7 @@ export class KairosLoopController {
     const abortController = new AbortController()
     let sawIdle = false
     let streamError: string | null = null
+    let pushToolAttempted = false
 
     const canUseTool: CanUseToolFn = async (
       tool,
@@ -839,6 +862,21 @@ export class KairosLoopController {
     ) =>
       forceDecision ??
       (() => {
+        if (
+          shouldDenyPushToolUseInTelegramTurn({
+            stopAfterFirstPush: options.stopAfterFirstPush === true,
+            pushToolAttempted,
+            toolName: tool.name,
+          })
+        ) {
+          return Promise.resolve({
+            behavior: 'deny' as const,
+          })
+        }
+        if (options.stopAfterFirstPush && isPushNotificationToolName(tool.name)) {
+          pushToolAttempted = true
+        }
+
         let isReadOnly = false
         try {
           isReadOnly = tool.isReadOnly(input as any)
@@ -879,6 +917,13 @@ export class KairosLoopController {
         const assistantText = extractAssistantTextFromSdkMessage(message)
         if (assistantText?.trim() === IDLE_TOKEN) {
           sawIdle = true
+          abortController.abort()
+          break
+        }
+        if (
+          options.stopAfterFirstPush &&
+          didPushNotificationSucceed(mutableMessages as any)
+        ) {
           abortController.abort()
           break
         }

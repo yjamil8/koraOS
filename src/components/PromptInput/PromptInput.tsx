@@ -78,7 +78,10 @@ import { transitionPermissionMode } from '../../utils/permissions/permissionSetu
 import { getPlatform } from '../../utils/platform.js';
 import type { ProcessUserInputContext } from '../../utils/processUserInput/processUserInput.js';
 import { editPromptInEditor } from '../../utils/promptEditor.js';
-import { hasAutoModeOptIn } from '../../utils/settings/settings.js';
+import {
+  hasAutoModeOptIn,
+  updateSettingsForSource,
+} from '../../utils/settings/settings.js';
 import { findBtwTriggerPositions } from '../../utils/sideQuestion.js';
 import { findSlashCommandPositions } from '../../utils/suggestions/commandSuggestions.js';
 import { findSlackChannelPositions, getKnownChannelsVersion, hasSlackMcpServer, subscribeKnownChannels } from '../../utils/suggestions/slackChannelSuggestions.js';
@@ -2032,6 +2035,9 @@ function PromptInput({
           fastMode: false
         })
       };
+    });
+    updateSettingsForSource('userSettings', {
+      model: model ?? undefined
     });
     setShowModelPicker(false);
     const effectiveFastMode = (isFastMode ?? false) && !wasFastModeDisabled;

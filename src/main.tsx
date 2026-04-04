@@ -34,7 +34,7 @@ import { addToHistory } from './history.js';
 import type { Root } from './ink.js';
 import { launchRepl } from './replLauncher.js';
 import { hasGrowthBookEnvOverride, initializeGrowthBook, refreshGrowthBookAfterAuthChange } from './services/analytics/growthbook.js';
-import { fetchBootstrapData } from './services/api/bootstrap.js';
+import { fetchBootstrapData, refreshLocalModelOptionsCache } from './services/api/bootstrap.js';
 import { type DownloadResult, downloadSessionFiles, type FilesApiConfig, parseFileSpecs } from './services/api/filesApi.js';
 import { prefetchPassesEligibility } from './services/api/referral.js';
 import { prefetchOfficialMcpUrls } from './services/mcp/officialRegistry.js';
@@ -2376,6 +2376,9 @@ async function run(): Promise<CommanderCommand> {
     const lastPrefetched = getGlobalConfig().startupPrefetchedAt ?? 0;
     // Local single-tenant build: disable Anthropic startup prefetch calls.
     const skipStartupPrefetches = true;
+    // Keep local model picker options in sync with LM Studio even when
+    // Anthropic startup prefetches are disabled.
+    void refreshLocalModelOptionsCache();
     if (!skipStartupPrefetches) {
       const lastPrefetchedInfo = lastPrefetched > 0 ? ` last ran ${Math.round((Date.now() - lastPrefetched) / 1000)}s ago` : '';
       logForDebugging(`Starting background startup prefetches${lastPrefetchedInfo}`);

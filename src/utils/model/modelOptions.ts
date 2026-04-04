@@ -14,7 +14,7 @@ import {
 } from '../modelCost.js'
 import { getSettings_DEPRECATED } from '../settings/settings.js'
 import { checkOpus1mAccess, checkSonnet1mAccess } from './check1mAccess.js'
-import { getAPIProvider } from './providers.js'
+import { getAPIProvider, isFirstPartyAnthropicBaseUrl } from './providers.js'
 import { isModelAllowed } from './modelAllowlist.js'
 import {
   getCanonicalName,
@@ -32,6 +32,7 @@ import {
 } from './model.js'
 import { has1mContext } from '../context.js'
 import { getGlobalConfig } from '../config.js'
+import { getAntModels } from './antModels.js'
 
 // @[MODEL LAUNCH]: Update all the available and default model option strings below.
 
@@ -276,6 +277,18 @@ function getModelOptionsBase(fastMode = false): ModelOption[] {
       label: m.label,
       description: m.description ?? `[ANT-ONLY] ${m.label} (${m.model})`,
     }))
+
+    // Local single-tenant mode: prefer models discovered from the configured
+    // local OpenAI-compatible endpoint (LM Studio), not Anthropic presets.
+    if (!isFirstPartyAnthropicBaseUrl()) {
+      const localOptions = [getDefaultOptionForUser(), ...antModelOptions]
+      for (const opt of getGlobalConfig().additionalModelOptionsCache ?? []) {
+        if (!localOptions.some(existing => existing.value === opt.value)) {
+          localOptions.push(opt)
+        }
+      }
+      return localOptions
+    }
 
     return [
       getDefaultOptionForUser(),
@@ -529,6 +542,10 @@ export function getModelOptions(fastMode = false): ModelOption[] {
  * Always preserves the "Default" option (value: null).
  */
 function filterModelOptionsByAllowlist(options: ModelOption[]): ModelOption[] {
+  if (!isFirstPartyAnthropicBaseUrl()) {
+    return options
+  }
+
   const settings = getSettings_DEPRECATED() || {}
   if (!settings.availableModels) {
     return options // No restrictions

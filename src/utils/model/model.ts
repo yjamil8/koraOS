@@ -66,7 +66,20 @@ export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
     return modelOverride
   }
 
-  return LOCAL_DEFAULT_MODEL
+  if (process.env.ANTHROPIC_MODEL) {
+    return process.env.ANTHROPIC_MODEL
+  }
+
+  try {
+    const settingsModel = getSettings_DEPRECATED()?.model
+    if (settingsModel !== undefined) {
+      return settingsModel
+    }
+  } catch {
+    // Config may not be enabled yet during early startup paths.
+  }
+
+  return undefined
 }
 
 /**

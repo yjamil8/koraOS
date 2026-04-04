@@ -12,7 +12,10 @@ import { logForDebugging } from '../../utils/debug.js'
 import { withOAuth401Retry } from '../../utils/http.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import { logError } from '../../utils/log.js'
-import { getAPIProvider } from '../../utils/model/providers.js'
+import {
+  getAPIProvider,
+  isFirstPartyAnthropicBaseUrl,
+} from '../../utils/model/providers.js'
 import { isEssentialTrafficOnly } from '../../utils/privacyLevel.js'
 import { getClaudeCodeUserAgent } from '../../utils/userAgent.js'
 
@@ -38,6 +41,16 @@ const bootstrapResponseSchema = lazySchema(() =>
 )
 
 type BootstrapResponse = z.infer<ReturnType<typeof bootstrapResponseSchema>>
+
+const localModelsResponseSchema = lazySchema(() =>
+  z.object({
+    data: z.array(
+      z.object({
+        id: z.string(),
+      }),
+    ),
+  }),
+)
 
 async function fetchBootstrapAPI(): Promise<BootstrapResponse | null> {
   if (isEssentialTrafficOnly()) {
@@ -106,6 +119,59 @@ async function fetchBootstrapAPI(): Promise<BootstrapResponse | null> {
     )
     throw error
   }
+}
+
+async function fetchLocalModelOptions(): Promise<
+  Array<{ value: string; label: string; description: string }> | null
+> {
+  if (isFirstPartyAnthropicBaseUrl()) {
+    return null
+  }
+
+  const baseUrl = process.env.ANTHROPIC_BASE_URL?.trim()
+  if (!baseUrl) return null
+
+  try {
+    const endpoint = `${baseUrl.replace(/\/$/, '')}/v1/models`
+    const response = await axios.get<unknown>(endpoint, { timeout: 5000 })
+    const parsed = localModelsResponseSchema().safeParse(response.data)
+    if (!parsed.success) {
+      logForDebugging(
+        `[Bootstrap] Local model list failed validation: ${parsed.error.message}`,
+      )
+      return null
+    }
+
+    return parsed.data.data.map(model => ({
+      value: model.id,
+      label: model.id,
+      description: `Local model (${model.id})`,
+    }))
+  } catch (error) {
+    logForDebugging(
+      `[Bootstrap] Local model list fetch failed: ${axios.isAxiosError(error) ? (error.response?.status ?? error.code) : 'unknown'}`,
+    )
+    return null
+  }
+}
+
+export async function refreshLocalModelOptionsCache(): Promise<void> {
+  const localModelOptions = await fetchLocalModelOptions()
+  if (!localModelOptions) return
+
+  const config = getGlobalConfig()
+  if (isEqual(config.additionalModelOptionsCache, localModelOptions)) {
+    logForDebugging('[Bootstrap] Local model cache unchanged, skipping write')
+    return
+  }
+
+  saveGlobalConfig(current => ({
+    ...current,
+    additionalModelOptionsCache: localModelOptions,
+  }))
+  logForDebugging(
+    `[Bootstrap] Local model cache updated (${localModelOptions.length} models)`,
+  )
 }
 
 /**

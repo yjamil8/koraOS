@@ -4,6 +4,7 @@ import {
   didPushNotificationSucceed,
   isHumanTelegramSender,
   resolveDaemonTurnModelFromSources,
+  resolvePersistedHistoryForDaemonTurn,
   shouldAdvanceTelegramOffsetAfterTick,
 } from './kairosLoop.js'
 
@@ -152,5 +153,26 @@ describe('computePersistedDaemonHistory', () => {
 
     expect(persisted).toHaveLength(1)
     expect((persisted[0] as any).message.content).toBe('existing context')
+  })
+})
+
+describe('resolvePersistedHistoryForDaemonTurn', () => {
+  test('preserves source history when requested (telegram stateless mode)', () => {
+    const sourceHistory = [{ type: 'user', message: { content: 'keep me' } }]
+    const mutableHistory = [
+      { type: 'user', message: { content: '[SYSTEM: Telegram inbound message.]' } },
+      { type: 'assistant', message: { content: [{ type: 'text', text: 'ephemeral reply' }] } },
+    ]
+
+    const persisted = resolvePersistedHistoryForDaemonTurn({
+      sourceHistory,
+      mutableHistory,
+      initialLength: 0,
+      internalPrompt: '[SYSTEM: Telegram inbound message.]',
+      preserveSourceHistory: true,
+    })
+
+    expect(persisted).toHaveLength(1)
+    expect((persisted[0] as any).message.content).toBe('keep me')
   })
 })

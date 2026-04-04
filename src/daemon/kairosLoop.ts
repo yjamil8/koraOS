@@ -192,6 +192,23 @@ export function computePersistedDaemonHistory(input: {
   )
 }
 
+export function resolvePersistedHistoryForDaemonTurn(input: {
+  sourceHistory: unknown[]
+  mutableHistory: unknown[]
+  initialLength: number
+  internalPrompt: string
+  preserveSourceHistory: boolean
+}): unknown[] {
+  if (input.preserveSourceHistory) {
+    return [...input.sourceHistory]
+  }
+  return computePersistedDaemonHistory({
+    history: input.mutableHistory,
+    initialLength: input.initialLength,
+    internalPrompt: input.internalPrompt,
+  })
+}
+
 function getLastAssistantText(history: unknown[]): string | null {
   for (let i = history.length - 1; i >= 0; i--) {
     const text = getAssistantMessageText(history[i] as any)
@@ -612,7 +629,9 @@ export class KairosLoopController {
         : morningWeatherDateKey
           ? MORNING_WEATHER_PROMPT
           : WAKE_PROMPT
-      const turn = await this.runNativeTurn(attached.session, prompt)
+      const turn = await this.runNativeTurn(attached.session, prompt, {
+        preserveSessionHistory: options.telegramMessage !== undefined,
+      })
       if (turn.malformed) {
         if (options.telegramMessage && turn.pushNotificationSucceeded) {
           this.state.consecutiveFailures = 0
@@ -761,7 +780,9 @@ export class KairosLoopController {
     projectPath: string
     transcriptPath: string
     history: unknown[]
-  }, prompt: string): Promise<{
+  }, prompt: string, options: {
+    preserveSessionHistory?: boolean
+  } = {}): Promise<{
     idle: boolean
     malformed: boolean
     assistantText: string | null
@@ -783,7 +804,8 @@ export class KairosLoopController {
     const tools = getTools(getAppState().toolPermissionContext)
     const commands = await getCommands(session.projectPath)
     const readFileCache = createFileStateCacheWithSizeLimit(READ_FILE_STATE_CACHE_SIZE)
-    const mutableMessages = Array.isArray(session.history) ? [...session.history] : []
+    const sourceHistory = Array.isArray(session.history) ? [...session.history] : []
+    const mutableMessages = options.preserveSessionHistory ? [] : [...sourceHistory]
     const daemonTurnModel = resolveDaemonTurnModel()
     const initialLength = mutableMessages.length
     const abortController = new AbortController()
@@ -854,10 +876,12 @@ export class KairosLoopController {
     const idle = sawIdle || assistantText === IDLE_TOKEN
     const pushNotificationSucceeded =
       didPushNotificationSucceed(mutableMessages as any)
-    const persistedHistory = computePersistedDaemonHistory({
-      history: mutableMessages,
+    const persistedHistory = resolvePersistedHistoryForDaemonTurn({
+      sourceHistory,
+      mutableHistory: mutableMessages,
       initialLength,
       internalPrompt: prompt,
+      preserveSourceHistory: options.preserveSessionHistory === true,
     })
 
     await updateSessionHistory({

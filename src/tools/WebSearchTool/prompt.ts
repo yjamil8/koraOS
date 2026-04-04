@@ -25,7 +25,7 @@ CRITICAL REQUIREMENT - You MUST follow this:
 
 Usage notes:
   - Domain filtering is supported to include or block specific websites
-  - Web search availability depends on network connectivity and configured providers
+  - Web search availability depends on network connectivity and TAVILY_API_KEY configuration
 
 IMPORTANT - Use the correct year in search queries:
   - The current month is ${currentMonthYear}. You MUST use this year when searching for recent information, documentation, or current events.

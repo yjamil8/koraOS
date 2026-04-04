@@ -136,8 +136,6 @@ declare module '@anthropic-ai/sdk/resources/beta/messages/messages.mjs' {
   export const BetaRequestDocumentBlock: any
   export type BetaStopReason = any
   export const BetaStopReason: any
-  export type BetaWebSearchTool20250305 = any
-  export const BetaWebSearchTool20250305: any
 }
 
 declare module 'src/entrypoints/agentSdkTypes.js' {
@@ -249,4 +247,3 @@ declare module 'src/services/analytics/growthbook.js' {
   export type initializeGrowthBook = any
   export const initializeGrowthBook: any
 }
-

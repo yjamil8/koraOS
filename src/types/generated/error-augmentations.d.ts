@@ -296,7 +296,6 @@ declare module '@anthropic-ai/sdk/resources/beta/messages/messages.mjs' {
   export type BetaToolUnion = any
   export type BetaToolUseBlock = any
   export type BetaUsage = any
-  export type BetaWebSearchTool20250305 = any
   export const BetaContentBlock: any
   export const BetaContentBlockParam: any
   export const BetaImageBlockParam: any
@@ -318,7 +317,6 @@ declare module '@anthropic-ai/sdk/resources/beta/messages/messages.mjs' {
   export const BetaToolUnion: any
   export const BetaToolUseBlock: any
   export const BetaUsage: any
-  export const BetaWebSearchTool20250305: any
 }
 
 declare module 'color-diff-napi' {
@@ -492,4 +490,3 @@ declare module 'src/types/utils.js' {
   export type DeepImmutable<T = any> = any
   export type Permutations<T = any> = any
 }
-

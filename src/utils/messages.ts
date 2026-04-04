@@ -1907,6 +1907,54 @@ function sanitizeErrorToolResultContent(
 }
 
 /**
+ * API compatibility guard: tool_result.content arrays must be text-only.
+ * Older transcripts (or tool adapters) may still include image/document/
+ * tool_reference blocks inside tool_result content. Convert those to a text
+ * summary so the request can proceed.
+ */
+function sanitizeToolResultContentToTextOnly(
+  messages: (UserMessage | AssistantMessage)[],
+): (UserMessage | AssistantMessage)[] {
+  return messages.map(msg => {
+    if (msg.type !== 'user') return msg
+    const content = msg.message.content
+    if (!Array.isArray(content)) return msg
+
+    let changed = false
+    const newContent = content.map(block => {
+      if (block.type !== 'tool_result' || !Array.isArray(block.content)) {
+        return block
+      }
+      if (block.content.every(c => c.type === 'text')) {
+        return block
+      }
+
+      changed = true
+      const textParts = block.content
+        .filter(c => c.type === 'text')
+        .map(c => c.text)
+      const nonTextKinds = Array.from(
+        new Set(block.content.filter(c => c.type !== 'text').map(c => c.type)),
+      )
+      const summary =
+        nonTextKinds.length > 0
+          ? `[Non-text tool_result content removed for API compatibility: ${nonTextKinds.join(', ')}]`
+          : '[Non-text tool_result content removed for API compatibility]'
+      const mergedText =
+        textParts.length > 0 ? `${textParts.join('\n\n')}\n\n${summary}` : summary
+
+      return {
+        ...block,
+        content: [{ type: 'text' as const, text: mergedText }],
+      }
+    })
+
+    if (!changed) return msg
+    return { ...msg, message: { ...msg.message, content: newContent } }
+  })
+}
+
+/**
  * Move text-block siblings off user messages that contain tool_reference.
  *
  * When a tool_result contains tool_reference, the server expands it to a
@@ -2340,7 +2388,8 @@ export function normalizeMessagesForAPI(
   // Unconditional — catches transcripts persisted before smooshIntoToolResult
   // learned to filter on is_error. Without this a resumed session with an
   // image-in-error tool_result 400s forever.
-  const sanitized = sanitizeErrorToolResultContent(smooshed)
+  const sanitizedErrors = sanitizeErrorToolResultContent(smooshed)
+  const sanitized = sanitizeToolResultContentToTextOnly(sanitizedErrors)
 
   // Append message ID tags for snip tool visibility (after all merging,
   // so tags always match the surviving message's messageId field).

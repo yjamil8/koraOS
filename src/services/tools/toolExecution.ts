@@ -1414,8 +1414,53 @@ async function checkPermissionsAndCallTool(
           )
         : await processToolResultBlock(tool, toolUseResult, toolUseID)
 
-      // Build content blocks - tool result first, then optional feedback
-      const contentBlocks: ContentBlockParam[] = [toolResultBlock]
+      // Anthropic now requires tool_result.content arrays to contain only text blocks.
+      // Keep tool_result as text-only and hoist image/document blocks to top-level user content.
+      const hoistedBlocks: ContentBlockParam[] = []
+      let normalizedToolResultBlock = toolResultBlock
+      if (Array.isArray(toolResultBlock.content)) {
+        const textBlocks: Array<{ type: 'text'; text: string }> = []
+        const omittedKinds: string[] = []
+
+        for (const block of toolResultBlock.content) {
+          if (block.type === 'text') {
+            textBlocks.push(block)
+            continue
+          }
+
+          if (block.type === 'image' || block.type === 'document') {
+            hoistedBlocks.push(block)
+            continue
+          }
+
+          omittedKinds.push(block.type)
+        }
+
+        if (omittedKinds.length > 0 || hoistedBlocks.length > 0) {
+          if (omittedKinds.length > 0) {
+            textBlocks.push({
+              type: 'text',
+              text: `[Omitted unsupported tool_result block types: ${Array.from(new Set(omittedKinds)).join(', ')}]`,
+            })
+          }
+          if (textBlocks.length === 0) {
+            textBlocks.push({
+              type: 'text',
+              text: '[Tool returned non-text content]',
+            })
+          }
+          normalizedToolResultBlock = {
+            ...toolResultBlock,
+            content: textBlocks,
+          }
+        }
+      }
+
+      // Build content blocks - tool result first, then hoisted media, then optional feedback
+      const contentBlocks: ContentBlockParam[] = [
+        normalizedToolResultBlock,
+        ...hoistedBlocks,
+      ]
       // Add accept feedback if user provided feedback when approving
       // (acceptFeedback only exists on PermissionAllowDecision, which is guaranteed here)
       if (
@@ -1439,18 +1484,20 @@ async function checkPermissionsAndCallTool(
 
       // Generate sequential imagePasteIds so each image renders with a distinct label
       let allowImageIds: number[] | undefined
-      if (allowContentBlocks?.length) {
-        const imageCount = count(
-          allowContentBlocks,
-          (b: ContentBlockParam) => b.type === 'image',
+      const imageCountFromToolResult = count(
+        hoistedBlocks,
+        (b: ContentBlockParam) => b.type === 'image',
+      )
+      const imageCountFromDecision = allowContentBlocks?.length
+        ? count(allowContentBlocks, (b: ContentBlockParam) => b.type === 'image')
+        : 0
+      const totalImageCount = imageCountFromToolResult + imageCountFromDecision
+      if (totalImageCount > 0) {
+        const startId = getNextImagePasteId(toolUseContext.messages)
+        allowImageIds = Array.from(
+          { length: totalImageCount },
+          (_, i) => startId + i,
         )
-        if (imageCount > 0) {
-          const startId = getNextImagePasteId(toolUseContext.messages)
-          allowImageIds = Array.from(
-            { length: imageCount },
-            (_, i) => startId + i,
-          )
-        }
       }
 
       resultingMessages.push({

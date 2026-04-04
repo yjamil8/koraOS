@@ -15,6 +15,8 @@ export type StoredLoopState = {
   backoffUntil: string | null
   activeSessionId: string | null
   lastError: string | null
+  lastWeatherPingDatePt: string | null
+  telegramLastUpdateId: number | null
 }
 
 const DEFAULT_LOOP_STATE: StoredLoopState = {
@@ -25,6 +27,8 @@ const DEFAULT_LOOP_STATE: StoredLoopState = {
   backoffUntil: null,
   activeSessionId: null,
   lastError: null,
+  lastWeatherPingDatePt: null,
+  telegramLastUpdateId: null,
 }
 
 function coerceIso(value: unknown): string | null {
@@ -56,6 +60,16 @@ function normalizeState(input: Partial<StoredLoopState>): StoredLoopState {
     activeSessionId:
       typeof input.activeSessionId === 'string' ? input.activeSessionId : null,
     lastError: typeof input.lastError === 'string' ? input.lastError : null,
+    lastWeatherPingDatePt:
+      typeof input.lastWeatherPingDatePt === 'string'
+        ? input.lastWeatherPingDatePt
+        : null,
+    telegramLastUpdateId:
+      typeof input.telegramLastUpdateId === 'number' &&
+      Number.isInteger(input.telegramLastUpdateId) &&
+      input.telegramLastUpdateId >= 0
+        ? input.telegramLastUpdateId
+        : null,
   }
 }
 

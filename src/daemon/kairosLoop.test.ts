@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import {
   didPushNotificationSucceed,
+  isHumanTelegramSender,
   resolveDaemonTurnModelFromSources,
 } from './kairosLoop.js'
 
@@ -79,5 +80,14 @@ describe('didPushNotificationSucceed', () => {
       },
     ]
     expect(didPushNotificationSucceed(messages)).toBe(false)
+  })
+})
+
+describe('isHumanTelegramSender', () => {
+  test('returns true only for explicit non-bot senders', () => {
+    expect(isHumanTelegramSender({ from: { is_bot: false } })).toBe(true)
+    expect(isHumanTelegramSender({ from: { is_bot: true } })).toBe(false)
+    expect(isHumanTelegramSender(undefined)).toBe(false)
+    expect(isHumanTelegramSender({})).toBe(false)
   })
 })

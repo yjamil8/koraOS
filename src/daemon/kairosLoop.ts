@@ -78,6 +78,12 @@ type TelegramGetUpdatesResponse = {
   description?: string
 }
 
+export function isHumanTelegramSender(
+  message: TelegramUpdate['message'],
+): boolean {
+  return message?.from?.is_bot === false
+}
+
 type TickResult =
   | {
       status: 'ok'
@@ -462,7 +468,7 @@ export class KairosLoopController {
 
       const message = update.message
       const text = typeof message?.text === 'string' ? message.text.trim() : ''
-      const isBot = message?.from?.is_bot === true
+      const isHumanSender = isHumanTelegramSender(message)
       const messageEpochMs =
         typeof message?.date === 'number' ? message.date * 1000 : null
       const isHistoricalBootstrapMessage =
@@ -472,7 +478,7 @@ export class KairosLoopController {
 
       if (
         !text ||
-        isBot ||
+        !isHumanSender ||
         !isAllowedTelegramChat(allowedChatId, message?.chat) ||
         isHistoricalBootstrapMessage
       ) {

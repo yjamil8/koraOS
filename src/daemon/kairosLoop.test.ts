@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import {
+  computePersistedDaemonHistory,
   didPushNotificationSucceed,
   isHumanTelegramSender,
   resolveDaemonTurnModelFromSources,
@@ -122,5 +123,34 @@ describe('shouldAdvanceTelegramOffsetAfterTick', () => {
         backoffUntil: null,
       }),
     ).toBe(true)
+  })
+})
+
+describe('computePersistedDaemonHistory', () => {
+  test('drops new daemon-turn messages and keeps prior history only', () => {
+    const prompt = '[SYSTEM: Telegram inbound message.]'
+    const history = [
+      {
+        type: 'user',
+        message: { content: 'existing context' },
+      },
+      {
+        type: 'user',
+        message: { content: prompt },
+      },
+      {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'reply text' }] },
+      },
+    ]
+
+    const persisted = computePersistedDaemonHistory({
+      history,
+      initialLength: 1,
+      internalPrompt: prompt,
+    })
+
+    expect(persisted).toHaveLength(1)
+    expect((persisted[0] as any).message.content).toBe('existing context')
   })
 })

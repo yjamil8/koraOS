@@ -180,6 +180,18 @@ function pruneInternalTickMessages(
   })
 }
 
+export function computePersistedDaemonHistory(input: {
+  history: unknown[]
+  initialLength: number
+  internalPrompt: string
+}): unknown[] {
+  const safeInitialLength = Math.max(0, Math.min(input.initialLength, input.history.length))
+  return pruneInternalTickMessages(
+    input.history.slice(0, safeInitialLength),
+    input.internalPrompt,
+  )
+}
+
 function getLastAssistantText(history: unknown[]): string | null {
   for (let i = history.length - 1; i >= 0; i--) {
     const text = getAssistantMessageText(history[i] as any)
@@ -842,9 +854,11 @@ export class KairosLoopController {
     const idle = sawIdle || assistantText === IDLE_TOKEN
     const pushNotificationSucceeded =
       didPushNotificationSucceed(mutableMessages as any)
-    const persistedHistory = idle
-      ? pruneInternalTickMessages(mutableMessages.slice(0, initialLength), prompt)
-      : pruneInternalTickMessages(mutableMessages, prompt)
+    const persistedHistory = computePersistedDaemonHistory({
+      history: mutableMessages,
+      initialLength,
+      internalPrompt: prompt,
+    })
 
     await updateSessionHistory({
       sessionId: session.id,

@@ -30,6 +30,10 @@ export type JustBidWatchConfig = {
   baseUrl: string
   listingPath: string
   pagesToScan: number
+  deepProbeEnabled: boolean
+  deepProbeIntervalMs: number
+  deepProbePagesToScan: number
+  deepProbeBaselinePages: number
   pollIntervalMs: number
   jitterMs: number
   requestTimeoutMs: number
@@ -44,6 +48,10 @@ const DEFAULT_JUSTBID_WATCH_CONFIG: JustBidWatchConfig = {
   baseUrl: 'https://www.justbid.com',
   listingPath: '/items?sort=newly_posted',
   pagesToScan: 3,
+  deepProbeEnabled: true,
+  deepProbeIntervalMs: 60 * 60 * 1000,
+  deepProbePagesToScan: 20,
+  deepProbeBaselinePages: 5,
   pollIntervalMs: 5 * 60 * 1000,
   jitterMs: 30 * 1000,
   requestTimeoutMs: 10_000,
@@ -154,6 +162,25 @@ function normalizeConfig(input: unknown): JustBidWatchConfig {
       typed.pagesToScan > 0
         ? typed.pagesToScan
         : DEFAULT_JUSTBID_WATCH_CONFIG.pagesToScan,
+    deepProbeEnabled: typed.deepProbeEnabled !== false,
+    deepProbeIntervalMs:
+      typeof typed.deepProbeIntervalMs === 'number' &&
+      Number.isFinite(typed.deepProbeIntervalMs) &&
+      typed.deepProbeIntervalMs >= 60_000
+        ? typed.deepProbeIntervalMs
+        : DEFAULT_JUSTBID_WATCH_CONFIG.deepProbeIntervalMs,
+    deepProbePagesToScan:
+      typeof typed.deepProbePagesToScan === 'number' &&
+      Number.isInteger(typed.deepProbePagesToScan) &&
+      typed.deepProbePagesToScan >= 1
+        ? typed.deepProbePagesToScan
+        : DEFAULT_JUSTBID_WATCH_CONFIG.deepProbePagesToScan,
+    deepProbeBaselinePages:
+      typeof typed.deepProbeBaselinePages === 'number' &&
+      Number.isInteger(typed.deepProbeBaselinePages) &&
+      typed.deepProbeBaselinePages >= 1
+        ? typed.deepProbeBaselinePages
+        : DEFAULT_JUSTBID_WATCH_CONFIG.deepProbeBaselinePages,
     pollIntervalMs:
       typeof typed.pollIntervalMs === 'number' &&
       Number.isFinite(typed.pollIntervalMs) &&

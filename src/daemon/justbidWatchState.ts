@@ -9,9 +9,16 @@ const MAX_TRACKED_ITEMS = 20_000
 export type JustBidWatchState = {
   lastRunAt: string | null
   lastSuccessAt: string | null
+  lastPage1ChangedAt: string | null
+  lastDeepProbeAt: string | null
   lastError: string | null
   consecutiveFailures: number
   backoffUntil: string | null
+  lastPage1Fingerprint: string | null
+  lastPage1TopItemIds: string[]
+  lastDeepProbePagesScanned: number
+  lastDeepProbeBaselinePages: number
+  lastDeepProbeUnseenBeyondBaseline: number
   seen: Record<string, string>
   notified: Record<string, string>
   lastScannedCount: number
@@ -22,9 +29,16 @@ export type JustBidWatchState = {
 const DEFAULT_WATCH_STATE: JustBidWatchState = {
   lastRunAt: null,
   lastSuccessAt: null,
+  lastPage1ChangedAt: null,
+  lastDeepProbeAt: null,
   lastError: null,
   consecutiveFailures: 0,
   backoffUntil: null,
+  lastPage1Fingerprint: null,
+  lastPage1TopItemIds: [],
+  lastDeepProbePagesScanned: 0,
+  lastDeepProbeBaselinePages: 0,
+  lastDeepProbeUnseenBeyondBaseline: 0,
   seen: {},
   notified: {},
   lastScannedCount: 0,
@@ -35,6 +49,7 @@ const DEFAULT_WATCH_STATE: JustBidWatchState = {
 function cloneDefaultState(): JustBidWatchState {
   return {
     ...DEFAULT_WATCH_STATE,
+    lastPage1TopItemIds: [],
     seen: {},
     notified: {},
   }
@@ -71,6 +86,8 @@ function normalizeState(input: unknown): JustBidWatchState {
   return {
     lastRunAt: coerceIso(typed.lastRunAt),
     lastSuccessAt: coerceIso(typed.lastSuccessAt),
+    lastPage1ChangedAt: coerceIso(typed.lastPage1ChangedAt),
+    lastDeepProbeAt: coerceIso(typed.lastDeepProbeAt),
     lastError: typeof typed.lastError === 'string' ? typed.lastError : null,
     consecutiveFailures:
       typeof typed.consecutiveFailures === 'number' &&
@@ -79,6 +96,35 @@ function normalizeState(input: unknown): JustBidWatchState {
         ? Math.floor(typed.consecutiveFailures)
         : 0,
     backoffUntil: coerceIso(typed.backoffUntil),
+    lastPage1Fingerprint:
+      typeof typed.lastPage1Fingerprint === 'string' &&
+      typed.lastPage1Fingerprint.trim().length > 0
+        ? typed.lastPage1Fingerprint
+        : null,
+    lastPage1TopItemIds: Array.isArray(typed.lastPage1TopItemIds)
+      ? typed.lastPage1TopItemIds
+          .map(value => (typeof value === 'string' ? value.trim() : ''))
+          .filter(Boolean)
+          .slice(0, 50)
+      : [],
+    lastDeepProbePagesScanned:
+      typeof typed.lastDeepProbePagesScanned === 'number' &&
+      Number.isFinite(typed.lastDeepProbePagesScanned) &&
+      typed.lastDeepProbePagesScanned >= 0
+        ? Math.floor(typed.lastDeepProbePagesScanned)
+        : 0,
+    lastDeepProbeBaselinePages:
+      typeof typed.lastDeepProbeBaselinePages === 'number' &&
+      Number.isFinite(typed.lastDeepProbeBaselinePages) &&
+      typed.lastDeepProbeBaselinePages >= 0
+        ? Math.floor(typed.lastDeepProbeBaselinePages)
+        : 0,
+    lastDeepProbeUnseenBeyondBaseline:
+      typeof typed.lastDeepProbeUnseenBeyondBaseline === 'number' &&
+      Number.isFinite(typed.lastDeepProbeUnseenBeyondBaseline) &&
+      typed.lastDeepProbeUnseenBeyondBaseline >= 0
+        ? Math.floor(typed.lastDeepProbeUnseenBeyondBaseline)
+        : 0,
     seen: normalizeStringMap(typed.seen),
     notified: normalizeStringMap(typed.notified),
     lastScannedCount:

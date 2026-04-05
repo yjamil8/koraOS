@@ -1,3 +1,4 @@
+import { createHash } from 'crypto'
 import { getSettings_DEPRECATED } from 'src/utils/settings/settings.js'
 import {
   readJustBidWatchConfig,
@@ -9,6 +10,10 @@ import {
   writeJustBidWatchState,
   type JustBidWatchState,
 } from './justbidWatchState.js'
+import {
+  appendJustBidWatchRunLog,
+  type JustBidRunStatus,
+} from './justbidWatchRunLog.js'
 import {
   calculateAllInCost,
   matchWatchlistRule,
@@ -25,12 +30,54 @@ type ListingCandidate = {
   title: string
 }
 
+type MutableRunMetrics = {
+  pagesScanned: number
+  scannedCount: number
+  unseenCount: number
+  detailFetchCount: number
+  matchedCount: number
+  notifiedCount: number
+  matchesByRule: Record<string, number>
+  notificationsByRule: Record<string, number>
+  skipReasonCounts: Record<string, number>
+  page1TopItemIds: string[]
+  page1Fingerprint: string | null
+  page1Changed: boolean | null
+  deepProbeRan: boolean
+  deepProbePagesScanned: number
+  deepProbeUnseenBeyondBaseline: number
+  deepProbeUnseenIdsSample: string[]
+}
+
 function nowIso(): string {
   return new Date().toISOString()
 }
 
 function isoAfter(ms: number): string {
   return new Date(Date.now() + ms).toISOString()
+}
+
+function addCount(counter: Record<string, number>, key: string): void {
+  counter[key] = (counter[key] ?? 0) + 1
+}
+
+function buildPage1Fingerprint(itemIds: string[]): string | null {
+  if (itemIds.length === 0) {
+    return null
+  }
+  return createHash('sha1').update(itemIds.join(',')).digest('hex')
+}
+
+function shouldRunDeepProbe(state: JustBidWatchState, config: JustBidWatchConfig): boolean {
+  if (!config.deepProbeEnabled) {
+    return false
+  }
+  if (!state.lastDeepProbeAt) {
+    return true
+  }
+  const nextProbeAt =
+    new Date(state.lastDeepProbeAt).getTime() + config.deepProbeIntervalMs
+  return nextProbeAt <= Date.now()
 }
 
 function normalizeWhitespace(input: string): string {
@@ -331,19 +378,155 @@ export class JustBidWatcherController {
     }
   }
 
+  private async appendRunLog(input: {
+    status: JustBidRunStatus
+    runStartedAt: string
+    runFinishedAt: string
+    error: string | null
+    pagesConfigured: number
+    metrics: MutableRunMetrics
+  }): Promise<void> {
+    const durationMs = Math.max(
+      0,
+      new Date(input.runFinishedAt).getTime() - new Date(input.runStartedAt).getTime(),
+    )
+    try {
+      await appendJustBidWatchRunLog({
+        timestamp: input.runFinishedAt,
+        runStartedAt: input.runStartedAt,
+        runFinishedAt: input.runFinishedAt,
+        durationMs,
+        status: input.status,
+        error: input.error,
+        pagesConfigured: input.pagesConfigured,
+        pagesScanned: input.metrics.pagesScanned,
+        scannedCount: input.metrics.scannedCount,
+        unseenCount: input.metrics.unseenCount,
+        detailFetchCount: input.metrics.detailFetchCount,
+        matchedCount: input.metrics.matchedCount,
+        notifiedCount: input.metrics.notifiedCount,
+        matchesByRule: input.metrics.matchesByRule,
+        notificationsByRule: input.metrics.notificationsByRule,
+        skipReasonCounts: input.metrics.skipReasonCounts,
+        page1TopItemIds: input.metrics.page1TopItemIds,
+        page1Fingerprint: input.metrics.page1Fingerprint,
+        page1Changed: input.metrics.page1Changed,
+        deepProbeRan: input.metrics.deepProbeRan,
+        deepProbeIntervalMs: this.config?.deepProbeIntervalMs ?? 0,
+        deepProbePagesToScan: this.config?.deepProbePagesToScan ?? 0,
+        deepProbeBaselinePages: this.config?.deepProbeBaselinePages ?? 0,
+        deepProbePagesScanned: input.metrics.deepProbePagesScanned,
+        deepProbeUnseenBeyondBaseline: input.metrics.deepProbeUnseenBeyondBaseline,
+        deepProbeUnseenIdsSample: input.metrics.deepProbeUnseenIdsSample,
+      })
+    } catch {
+      // Logging should never break watcher execution.
+    }
+  }
+
+  private async runDeepProbe(input: {
+    state: JustBidWatchState
+    config: JustBidWatchConfig
+    pendingSeen: Record<string, string>
+    pageCandidatesByPage: Map<number, ListingCandidate[]>
+    metrics: MutableRunMetrics
+  }): Promise<void> {
+    const baselinePages = Math.max(
+      1,
+      Math.min(input.config.deepProbeBaselinePages, input.config.deepProbePagesToScan),
+    )
+    const knownIds = new Set<string>([
+      ...Object.keys(input.state.seen),
+      ...Object.keys(input.pendingSeen),
+    ])
+    const unseenBeyond = new Set<string>()
+
+    for (let page = 1; page <= input.config.deepProbePagesToScan; page++) {
+      let candidates = input.pageCandidatesByPage.get(page)
+      if (!candidates) {
+        const listUrl = buildListingPageUrl(input.config, page)
+        const html = await fetchText(listUrl, input.config.requestTimeoutMs)
+        candidates = extractListingCandidates(html, input.config)
+      }
+
+      input.metrics.deepProbePagesScanned += 1
+      if (page <= baselinePages) {
+        for (const candidate of candidates) {
+          knownIds.add(candidate.itemId)
+        }
+        continue
+      }
+
+      for (const candidate of candidates) {
+        if (!knownIds.has(candidate.itemId)) {
+          unseenBeyond.add(candidate.itemId)
+          knownIds.add(candidate.itemId)
+        }
+      }
+    }
+
+    input.metrics.deepProbeRan = true
+    input.metrics.deepProbeUnseenBeyondBaseline = unseenBeyond.size
+    input.metrics.deepProbeUnseenIdsSample = Array.from(unseenBeyond).slice(0, 30)
+    if (unseenBeyond.size > 0) {
+      addCount(input.metrics.skipReasonCounts, 'deep_probe_unseen_beyond_baseline')
+    }
+
+    input.state.lastDeepProbeAt = nowIso()
+    input.state.lastDeepProbePagesScanned = input.metrics.deepProbePagesScanned
+    input.state.lastDeepProbeBaselinePages = baselinePages
+    input.state.lastDeepProbeUnseenBeyondBaseline = unseenBeyond.size
+  }
+
   private async performTick(): Promise<void> {
     this.config = await readJustBidWatchConfig()
     this.state = await readJustBidWatchState()
+    const runStartedAt = nowIso()
+    const pagesConfigured = this.config.pagesToScan
+    const metrics: MutableRunMetrics = {
+      pagesScanned: 0,
+      scannedCount: 0,
+      unseenCount: 0,
+      detailFetchCount: 0,
+      matchedCount: 0,
+      notifiedCount: 0,
+      matchesByRule: {},
+      notificationsByRule: {},
+      skipReasonCounts: {},
+      page1TopItemIds: [],
+      page1Fingerprint: null,
+      page1Changed: null,
+      deepProbeRan: false,
+      deepProbePagesScanned: 0,
+      deepProbeUnseenBeyondBaseline: 0,
+      deepProbeUnseenIdsSample: [],
+    }
 
     if (!this.config.enabled) {
+      await this.appendRunLog({
+        status: 'disabled',
+        runStartedAt,
+        runFinishedAt: nowIso(),
+        error: null,
+        pagesConfigured,
+        metrics,
+      })
       return
     }
 
     const state = this.state
-    state.lastRunAt = nowIso()
+    state.lastRunAt = runStartedAt
 
     if (isBackoffActive(state)) {
       await writeJustBidWatchState(state)
+      await this.appendRunLog({
+        status: 'backoff_skip',
+        runStartedAt,
+        runFinishedAt: nowIso(),
+        error: null,
+        pagesConfigured,
+        metrics,
+      })
       return
     }
 
@@ -354,37 +537,65 @@ export class JustBidWatcherController {
       state.consecutiveFailures = 0
       state.backoffUntil = null
       await writeJustBidWatchState(state)
+      await this.appendRunLog({
+        status: 'no_rules',
+        runStartedAt,
+        runFinishedAt: nowIso(),
+        error: null,
+        pagesConfigured,
+        metrics,
+      })
       return
     }
 
     try {
       const pendingSeen: Record<string, string> = {}
       const observedIds = new Set<string>()
-      let scanned = 0
-      let matched = 0
-      let notified = 0
+      const pageCandidatesByPage = new Map<number, ListingCandidate[]>()
 
       for (let page = 1; page <= this.config.pagesToScan; page++) {
         const listUrl = buildListingPageUrl(this.config, page)
         const html = await fetchText(listUrl, this.config.requestTimeoutMs)
         const candidates = extractListingCandidates(html, this.config)
-        scanned += candidates.length
+        pageCandidatesByPage.set(page, candidates)
+        metrics.pagesScanned += 1
+        metrics.scannedCount += candidates.length
+        if (page === 1) {
+          metrics.page1TopItemIds = candidates.slice(0, 30).map(candidate => candidate.itemId)
+          metrics.page1Fingerprint = buildPage1Fingerprint(metrics.page1TopItemIds)
+          if (metrics.page1Fingerprint) {
+            metrics.page1Changed =
+              state.lastPage1Fingerprint === null
+                ? true
+                : state.lastPage1Fingerprint !== metrics.page1Fingerprint
+            state.lastPage1Fingerprint = metrics.page1Fingerprint
+            state.lastPage1TopItemIds = metrics.page1TopItemIds
+            if (metrics.page1Changed) {
+              state.lastPage1ChangedAt = nowIso()
+            }
+          }
+        }
 
         for (const candidate of candidates) {
           if (observedIds.has(candidate.itemId)) {
+            addCount(metrics.skipReasonCounts, 'duplicate_in_page_window')
             continue
           }
           observedIds.add(candidate.itemId)
           if (state.seen[candidate.itemId]) {
+            addCount(metrics.skipReasonCounts, 'already_seen')
             continue
           }
+          metrics.unseenCount += 1
 
           const seenAt = nowIso()
           if (!canMatchByTitle(candidate.title, rules)) {
             pendingSeen[candidate.itemId] = seenAt
+            addCount(metrics.skipReasonCounts, 'title_prefilter_miss')
             continue
           }
 
+          metrics.detailFetchCount += 1
           const detailHtml = await fetchText(candidate.url, this.config.requestTimeoutMs)
           const item = parseItemPage(detailHtml, candidate.url, candidate.itemId)
           if (!item.title && candidate.title) {
@@ -398,19 +609,26 @@ export class JustBidWatcherController {
               taxRate: this.config.taxRate,
             })
             if (!result.match) {
+              addCount(
+                metrics.skipReasonCounts,
+                result.reasons[0] ? `rule_${result.reasons[0]}` : 'rule_mismatch',
+              )
               continue
             }
-            matched += 1
+            metrics.matchedCount += 1
+            addCount(metrics.matchesByRule, rule.id)
 
             const notificationKey = `${rule.id}:${item.itemId}`
             if (rule.notifyOnce && state.notified[notificationKey]) {
+              addCount(metrics.skipReasonCounts, 'already_notified')
               continue
             }
 
             await sendTelegramMessage(
               buildNotificationMessage({ rule, item, allInCost: result.allInCost }),
             )
-            notified += 1
+            metrics.notifiedCount += 1
+            addCount(metrics.notificationsByRule, rule.id)
             state.notified[notificationKey] = seenAt
           }
 
@@ -419,25 +637,56 @@ export class JustBidWatcherController {
         }
       }
 
+      if (shouldRunDeepProbe(state, this.config)) {
+        try {
+          await this.runDeepProbe({
+            state,
+            config: this.config,
+            pendingSeen,
+            pageCandidatesByPage,
+            metrics,
+          })
+        } catch {
+          addCount(metrics.skipReasonCounts, 'deep_probe_failed')
+        }
+      }
+
       state.seen = { ...state.seen, ...pendingSeen }
-      state.lastScannedCount = scanned
-      state.lastMatchedCount = matched
-      state.lastNotifiedCount = notified
+      state.lastScannedCount = metrics.scannedCount
+      state.lastMatchedCount = metrics.matchedCount
+      state.lastNotifiedCount = metrics.notifiedCount
       state.lastSuccessAt = nowIso()
       state.lastError = null
       state.consecutiveFailures = 0
       state.backoffUntil = null
       await writeJustBidWatchState(state)
+      await this.appendRunLog({
+        status: 'success',
+        runStartedAt,
+        runFinishedAt: nowIso(),
+        error: null,
+        pagesConfigured,
+        metrics,
+      })
     } catch (error) {
-      state.lastError = error instanceof Error ? error.message : String(error)
+      const message = error instanceof Error ? error.message : String(error)
+      state.lastError = message
       state.consecutiveFailures += 1
-      state.lastScannedCount = 0
-      state.lastMatchedCount = 0
-      state.lastNotifiedCount = 0
+      state.lastScannedCount = metrics.scannedCount
+      state.lastMatchedCount = metrics.matchedCount
+      state.lastNotifiedCount = metrics.notifiedCount
       if (state.consecutiveFailures >= 3) {
         state.backoffUntil = isoAfter(DEFAULT_RETRY_BACKOFF_MS)
       }
       await writeJustBidWatchState(state)
+      await this.appendRunLog({
+        status: 'failure',
+        runStartedAt,
+        runFinishedAt: nowIso(),
+        error: message,
+        pagesConfigured,
+        metrics,
+      })
     }
   }
 }

@@ -1,5 +1,6 @@
 import { startDaemonHttpServer } from './httpServer.js'
 import { init } from '../entrypoints/init.js'
+import { initSessionMemory } from '../services/SessionMemory/sessionMemory.js'
 import { KairosLoopController } from './kairosLoop.js'
 import { syncActiveSessions } from './sessions.js'
 import { JustBidWatcherController } from './justbidWatcher.js'
@@ -10,6 +11,7 @@ async function runSupervisorWorker(): Promise<void> {
   process.title = 'kora-daemon'
 
   await init()
+  initSessionMemory()
   const loopController = new KairosLoopController()
   const justBidWatcher = new JustBidWatcherController()
   await loopController.initialize()

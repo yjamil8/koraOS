@@ -1,6 +1,7 @@
 import { feature } from 'bun:bundle'
 import { initAutoDream } from '../services/autoDream/autoDream.js'
 import { initMagicDocs } from '../services/MagicDocs/magicDocs.js'
+import { initSessionMemory } from '../services/SessionMemory/sessionMemory.js'
 import { initSkillImprovement } from './hooks/skillImprovement.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -34,6 +35,7 @@ export function startBackgroundHousekeeping(): void {
   if (feature('EXTRACT_MEMORIES')) {
     extractMemoriesModule!.initExtractMemories()
   }
+  initSessionMemory()
   initAutoDream()
   void autoUpdateMarketplacesAndPluginsInBackground()
   if (feature('LODESTONE') && getIsInteractive()) {

@@ -6,7 +6,7 @@
 
 import { writeFile } from 'fs/promises'
 import memoize from 'lodash-es/memoize.js'
-import { getIsRemoteMode } from '../../bootstrap/state.js'
+import { getIsRemoteMode, getSessionSource } from '../../bootstrap/state.js'
 import { getSystemPrompt } from '../../constants/prompts.js'
 import { getSystemContext, getUserContext } from '../../context.js'
 import type { CanUseToolFn } from '../../hooks/useCanUseTool.js'
@@ -45,6 +45,7 @@ import {
   buildSessionMemoryUpdatePrompt,
   loadSessionMemoryTemplate,
 } from './prompts.js'
+import { shouldRunSessionMemoryForQuery } from './sessionMemoryQueryGate.js'
 import {
   DEFAULT_SESSION_MEMORY_CONFIG,
   getSessionMemoryConfig,
@@ -274,9 +275,14 @@ const extractSessionMemory = sequential(async function (
 ): Promise<void> {
   const { messages, toolUseContext, querySource } = context
 
-  // Only run session memory on main REPL thread
-  if (querySource !== 'repl_main_thread') {
-    // Don't log this - it's expected for subagents, teammates, etc.
+  if (
+    !shouldRunSessionMemoryForQuery({
+      querySource,
+      sessionSource: getSessionSource(),
+      messages,
+    })
+  ) {
+    // Expected for subagents, teammate turns, and internal daemon wake prompts.
     return
   }
 

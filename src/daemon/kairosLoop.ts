@@ -9,10 +9,12 @@ import {
   switchSession,
 } from 'src/bootstrap/state.js'
 import { getCommands } from 'src/commands.js'
+import { prefetchAllMcpResources } from 'src/services/mcp/client.js'
+import { getClaudeCodeMcpConfigs } from 'src/services/mcp/config.js'
 import { createStore } from 'src/state/store.js'
 import { getDefaultAppState, type AppState } from 'src/state/AppStateStore.js'
 import { type CanUseToolFn } from 'src/hooks/useCanUseTool.js'
-import { getTools } from 'src/tools.js'
+import { assembleToolPool } from 'src/tools.js'
 import {
   getAssistantMessageText,
   getUserMessageText,
@@ -405,9 +407,15 @@ export class KairosLoopController {
   private inFlightTick: Promise<TickResult> | null = null
   private inFlightTelegramPoll: Promise<void> | null = null
   private readonly telegramListenerStartedAtMs = Date.now()
+  private mcpClients: Awaited<ReturnType<typeof prefetchAllMcpResources>>['clients'] =
+    []
+  private mcpTools: Awaited<ReturnType<typeof prefetchAllMcpResources>>['tools'] = []
+  private mcpCommands: Awaited<ReturnType<typeof prefetchAllMcpResources>>['commands'] =
+    []
 
   async initialize(): Promise<void> {
     this.state = await readLoopState()
+    await this.loadMcpRuntime()
   }
 
   start(): void {
@@ -569,6 +577,20 @@ export class KairosLoopController {
     ) {
       this.state.telegramLastUpdateId = nextOffset
       await writeLoopState(this.state)
+    }
+  }
+
+  private async loadMcpRuntime(): Promise<void> {
+    try {
+      const { servers } = await getClaudeCodeMcpConfigs()
+      const loaded = await prefetchAllMcpResources(servers)
+      this.mcpClients = loaded.clients
+      this.mcpTools = loaded.tools
+      this.mcpCommands = loaded.commands
+    } catch {
+      this.mcpClients = []
+      this.mcpTools = []
+      this.mcpCommands = []
     }
   }
 
@@ -845,12 +867,32 @@ export class KairosLoopController {
     setCwdState(session.projectPath)
     switchSession(session.id as any, null)
 
-    const appStore = createStore<AppState>(getDefaultAppState())
+    const defaultAppState = getDefaultAppState()
+    const appStore = createStore<AppState>({
+      ...defaultAppState,
+      toolPermissionContext: {
+        ...defaultAppState.toolPermissionContext,
+        shouldAvoidPermissionPrompts: true,
+      },
+      mcp: {
+        ...defaultAppState.mcp,
+        clients: this.mcpClients,
+        tools: this.mcpTools,
+        commands: this.mcpCommands,
+      },
+    })
     const getAppState = () => appStore.getState()
     const setAppState = (f: (prev: AppState) => AppState) => appStore.setState(f)
 
-    const tools = getTools(getAppState().toolPermissionContext)
-    const commands = await getCommands(session.projectPath)
+    const tools = assembleToolPool(
+      getAppState().toolPermissionContext,
+      getAppState().mcp.tools,
+    )
+    const commands = [
+      ...(await getCommands(session.projectPath)),
+      ...getAppState().mcp.commands,
+    ]
+    const mcpClients = getAppState().mcp.clients
     const readFileCache = createFileStateCacheWithSizeLimit(READ_FILE_STATE_CACHE_SIZE)
     const sourceHistory = Array.isArray(session.history) ? [...session.history] : []
     const mutableMessages = [...sourceHistory]
@@ -928,7 +970,7 @@ export class KairosLoopController {
         prompt,
         cwd: session.projectPath,
         tools,
-        mcpClients: [],
+        mcpClients,
         canUseTool,
         mutableMessages,
         getReadFileCache: () => readFileCache,

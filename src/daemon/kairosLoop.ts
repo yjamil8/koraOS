@@ -65,6 +65,10 @@ const BACKOFF_MS = 30 * 60 * 1000
 const TELEGRAM_MESSAGE_MAX_PROMPT_CHARS = 4_000
 const TELEGRAM_GET_UPDATES_LIMIT = 20
 const TELEGRAM_MAX_SAFE_CHARS = 4_000
+const DAEMON_TICK_MAX_TURNS = 4
+const TELEGRAM_REPLY_MAX_TURNS = 6
+const DAEMON_TICK_TIMEOUT_MS = 90_000
+const TELEGRAM_REPLY_TIMEOUT_MS = 120_000
 
 type TelegramUpdate = {
   update_id?: number
@@ -922,6 +926,19 @@ export class KairosLoopController {
       .join('\n\n')
     const initialLength = mutableMessages.length
     const abortController = new AbortController()
+    const maxTurns =
+      options.channelMode === 'telegram_reply'
+        ? TELEGRAM_REPLY_MAX_TURNS
+        : DAEMON_TICK_MAX_TURNS
+    const turnTimeoutMs =
+      options.channelMode === 'telegram_reply'
+        ? TELEGRAM_REPLY_TIMEOUT_MS
+        : DAEMON_TICK_TIMEOUT_MS
+    let timedOut = false
+    const timeoutHandle = setTimeout(() => {
+      timedOut = true
+      abortController.abort()
+    }, turnTimeoutMs)
     let sawIdle = false
     let streamError: string | null = null
     let pushToolAttempted = false
@@ -988,6 +1005,7 @@ export class KairosLoopController {
         abortController,
         userSpecifiedModel: daemonTurnModel,
         appendSystemPrompt: effectiveAppendPrompt,
+        maxTurns,
       })) {
         const assistantText = extractAssistantTextFromSdkMessage(message)
         if (assistantText?.trim() === IDLE_TOKEN) {
@@ -1004,9 +1022,15 @@ export class KairosLoopController {
         }
       }
     } catch (error) {
-      if (!abortController.signal.aborted) {
+      if (!abortController.signal.aborted || timedOut) {
         streamError = error instanceof Error ? error.message : String(error)
       }
+    } finally {
+      clearTimeout(timeoutHandle)
+    }
+
+    if (timedOut) {
+      streamError = `Daemon turn timed out after ${Math.round(turnTimeoutMs / 1000)}s`
     }
 
     const assistantText = getLastAssistantText(mutableMessages)

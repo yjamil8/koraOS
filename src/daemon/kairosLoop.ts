@@ -38,7 +38,6 @@ import {
   attachSession,
   createSession,
   getSession,
-  listSessions,
   updateSessionHistory,
 } from './sessions.js'
 import { readLoopState, type StoredLoopState, writeLoopState } from './loopState.js'
@@ -824,21 +823,30 @@ export class KairosLoopController {
       }
     }
 
-    const sessions = await listSessions()
-    const preferred = sessions.find(
-      session =>
-        session.ownerPid === null ||
-        session.ownerPid === process.pid ||
-        session.ownerClientId === LOOP_OWNER_ID,
-    )
-    if (!preferred) {
-      return null
+    if (this.state.activeSessionId) {
+      const active = await getSession(this.state.activeSessionId)
+      if (active) {
+        return {
+          id: active.id,
+          projectPath: active.projectPath,
+          transcriptPath: active.transcriptPath,
+        }
+      }
+
+      this.state.activeSessionId = null
+      await writeLoopState(this.state)
     }
 
+    const created = await createSession({
+      projectPath: process.cwd(),
+    })
+    this.state.activeSessionId = created.id
+    await writeLoopState(this.state)
+
     return {
-      id: preferred.id,
-      projectPath: preferred.projectPath,
-      transcriptPath: preferred.transcriptPath,
+      id: created.id,
+      projectPath: created.projectPath,
+      transcriptPath: created.transcriptPath,
     }
   }
 
@@ -861,7 +869,7 @@ export class KairosLoopController {
   }> {
     setSessionSource('daemon')
     setIsInteractive(false)
-    setSessionPersistenceDisabled(true)
+    setSessionPersistenceDisabled(options.channelMode !== 'telegram_reply')
     setKairosActive(true)
     setOriginalCwd(session.projectPath)
     setCwdState(session.projectPath)

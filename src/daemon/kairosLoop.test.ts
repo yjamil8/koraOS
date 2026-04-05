@@ -158,23 +158,23 @@ describe('computePersistedDaemonHistory', () => {
 })
 
 describe('resolvePersistedHistoryForDaemonTurn', () => {
-  test('preserves source history when requested (telegram stateless mode)', () => {
-    const sourceHistory = [{ type: 'user', message: { content: 'keep me' } }]
+  test('appends telegram turn messages to master history', () => {
     const mutableHistory = [
-      { type: 'user', message: { content: '[SYSTEM: Telegram inbound message.]' } },
-      { type: 'assistant', message: { content: [{ type: 'text', text: 'ephemeral reply' }] } },
+      { type: 'user', message: { content: 'keep me' } },
+      { type: 'user', message: { content: 'what did you find today?' } },
+      { type: 'assistant', message: { content: [{ type: 'text', text: 'I found 2 matches.' }] } },
     ]
 
     const persisted = resolvePersistedHistoryForDaemonTurn({
-      sourceHistory,
       mutableHistory,
-      initialLength: 0,
-      internalPrompt: '[SYSTEM: Telegram inbound message.]',
-      preserveSourceHistory: true,
+      initialLength: 1,
+      internalPrompt: 'what did you find today?',
+      persistenceMode: 'append_full_turn',
     })
 
-    expect(persisted).toHaveLength(1)
+    expect(persisted).toHaveLength(3)
     expect((persisted[0] as any).message.content).toBe('keep me')
+    expect((persisted[1] as any).message.content).toBe('what did you find today?')
   })
 })
 

@@ -56,6 +56,7 @@ import { getInitialFastModeSetting, isFastModeEnabled, prefetchFastModeStatus, r
 import { applyConfigEnvironmentVariables } from './utils/managedEnv.js';
 import { createSystemMessage, createUserMessage } from './utils/messages.js';
 import { getPlatform } from './utils/platform.js';
+import { prependPromptSection, renderResonancePolicyPrompt, resolveResonancePolicy } from './utils/resonanceEngine.js';
 import { getBaseRenderOptions } from './utils/renderOptions.js';
 import { getSessionIngressAuthToken } from './utils/sessionIngressAuth.js';
 import { settingsChangeDetector } from './utils/settings/changeDetector.js';
@@ -1407,6 +1408,14 @@ async function run(): Promise<CommanderCommand> {
         process.stderr.write(chalk.red(`Error reading append system prompt file: ${errorMessage(error)}\n`));
         process.exit(1);
       }
+    }
+
+    if (!isNonInteractiveSession) {
+      const cliResonancePrompt = renderResonancePolicyPrompt(resolveResonancePolicy({
+        channel: 'cli',
+        turnMode: 'interactive_reply'
+      }));
+      appendSystemPrompt = prependPromptSection(appendSystemPrompt, cliResonancePrompt);
     }
 
     // Add teammate-specific system prompt addendum for tmux teammates

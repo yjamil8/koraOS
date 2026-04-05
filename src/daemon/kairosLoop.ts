@@ -29,6 +29,10 @@ import {
   getSettingsWithSources,
 } from 'src/utils/settings/settings.js'
 import {
+  renderResonancePolicyPrompt,
+  resolveResonancePolicy,
+} from 'src/utils/resonanceEngine.js'
+import {
   attachSession,
   createSession,
   getSession,
@@ -83,6 +87,9 @@ type TelegramGetUpdatesResponse = {
   result?: TelegramUpdate[]
   description?: string
 }
+
+type DaemonChannelMode = 'telegram_reply' | 'autonomous_tick'
+type DaemonHistoryPersistenceMode = 'drop_new_turn' | 'append_full_turn'
 
 export function isHumanTelegramSender(
   message: TelegramUpdate['message'],
@@ -199,14 +206,16 @@ export function computePersistedDaemonHistory(input: {
 }
 
 export function resolvePersistedHistoryForDaemonTurn(input: {
-  sourceHistory: unknown[]
   mutableHistory: unknown[]
   initialLength: number
   internalPrompt: string
-  preserveSourceHistory: boolean
+  persistenceMode: DaemonHistoryPersistenceMode
 }): unknown[] {
-  if (input.preserveSourceHistory) {
-    return [...input.sourceHistory]
+  if (input.persistenceMode === 'append_full_turn') {
+    return input.mutableHistory.filter(message => {
+      const assistantText = getAssistantMessageText(message as any)
+      return assistantText?.trim() !== IDLE_TOKEN
+    })
   }
   return computePersistedDaemonHistory({
     history: input.mutableHistory,
@@ -354,22 +363,12 @@ export function shouldDenyPushToolUseInTelegramTurn(input: {
   )
 }
 
-function buildTelegramPrompt(input: {
-  text: string
-  username?: string
-}): string {
+function buildTelegramTransportDirective(input: { username?: string }): string {
   const sender = input.username ? `@${input.username}` : 'the user'
-  const message = truncateForPrompt(input.text)
-  return `[SYSTEM: Telegram inbound message.
-Reply to ${sender} as Kora.
-1. Read the Telegram message below.
-2. Draft a concise, helpful response.
-3. Send the response using PushNotification.
-4. After PushNotification succeeds, respond strictly with '<idle>' and nothing else.
-
-<telegram_message>
-${message}
-</telegram_message>]`
+  return `[SYSTEM: Telegram reply delivery contract.
+You are replying to a live Telegram message from ${sender}.
+Send your final user-facing reply using PushNotification.
+After PushNotification succeeds, respond strictly with '<idle>' and nothing else.]`
 }
 
 function isAllowedTelegramChat(
@@ -662,13 +661,21 @@ export class KairosLoopController {
           ? this.getPendingMorningWeatherDateKey()
           : null
       const prompt = options.telegramMessage
-        ? buildTelegramPrompt(options.telegramMessage)
+        ? truncateForPrompt(options.telegramMessage.text)
         : morningWeatherDateKey
           ? MORNING_WEATHER_PROMPT
           : WAKE_PROMPT
       const turn = await this.runNativeTurn(attached.session, prompt, {
-        preserveSessionHistory: options.telegramMessage !== undefined,
+        channelMode:
+          options.telegramMessage === undefined
+            ? 'autonomous_tick'
+            : 'telegram_reply',
+        persistenceMode:
+          options.telegramMessage === undefined
+            ? 'drop_new_turn'
+            : 'append_full_turn',
         stopAfterFirstPush: options.telegramMessage !== undefined,
+        telegramUsername: options.telegramMessage?.username,
       })
       if (turn.malformed) {
         if (options.telegramMessage && turn.pushNotificationSucceeded) {
@@ -819,9 +826,11 @@ export class KairosLoopController {
     transcriptPath: string
     history: unknown[]
   }, prompt: string, options: {
-    preserveSessionHistory?: boolean
+    channelMode: DaemonChannelMode
+    persistenceMode: DaemonHistoryPersistenceMode
     stopAfterFirstPush?: boolean
-  } = {}): Promise<{
+    telegramUsername?: string
+  }): Promise<{
     idle: boolean
     malformed: boolean
     assistantText: string | null
@@ -844,8 +853,23 @@ export class KairosLoopController {
     const commands = await getCommands(session.projectPath)
     const readFileCache = createFileStateCacheWithSizeLimit(READ_FILE_STATE_CACHE_SIZE)
     const sourceHistory = Array.isArray(session.history) ? [...session.history] : []
-    const mutableMessages = options.preserveSessionHistory ? [] : [...sourceHistory]
+    const mutableMessages = [...sourceHistory]
     const daemonTurnModel = resolveDaemonTurnModel()
+    const resonancePrompt = renderResonancePolicyPrompt(
+      resolveResonancePolicy({
+        channel: options.channelMode === 'telegram_reply' ? 'telegram' : 'daemon',
+        turnMode: options.channelMode,
+      }),
+    )
+    const transportPrompt =
+      options.channelMode === 'telegram_reply'
+        ? buildTelegramTransportDirective({
+            username: options.telegramUsername,
+          })
+        : null
+    const effectiveAppendPrompt = [resonancePrompt, transportPrompt]
+      .filter(Boolean)
+      .join('\n\n')
     const initialLength = mutableMessages.length
     const abortController = new AbortController()
     let sawIdle = false
@@ -913,6 +937,7 @@ export class KairosLoopController {
         setAppState,
         abortController,
         userSpecifiedModel: daemonTurnModel,
+        appendSystemPrompt: effectiveAppendPrompt,
       })) {
         const assistantText = extractAssistantTextFromSdkMessage(message)
         if (assistantText?.trim() === IDLE_TOKEN) {
@@ -939,11 +964,10 @@ export class KairosLoopController {
     const pushNotificationSucceeded =
       didPushNotificationSucceed(mutableMessages as any)
     const persistedHistory = resolvePersistedHistoryForDaemonTurn({
-      sourceHistory,
       mutableHistory: mutableMessages,
       initialLength,
       internalPrompt: prompt,
-      preserveSourceHistory: options.preserveSessionHistory === true,
+      persistenceMode: options.persistenceMode,
     })
 
     await updateSessionHistory({

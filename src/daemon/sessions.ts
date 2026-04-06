@@ -243,6 +243,7 @@ export async function attachSession(input: {
   ownerClientId: string
   projectPath?: string
   transcriptPath?: string
+  syncHistoryFromTranscript?: boolean
 }): Promise<{ session: DaemonSessionRecord; stolenFromPid: number | null }> {
   let session = await readSession(input.sessionId)
   if (!session) {
@@ -280,7 +281,9 @@ export async function attachSession(input: {
   session.state = 'active'
   session.updatedAt = nowIso()
   await writeSession(session)
-  session = await syncSessionHistory(session)
+  if (input.syncHistoryFromTranscript !== false) {
+    session = await syncSessionHistory(session)
+  }
 
   return {
     session,

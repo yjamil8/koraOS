@@ -16,6 +16,8 @@ import { getDefaultAppState, type AppState } from 'src/state/AppStateStore.js'
 import { type CanUseToolFn } from 'src/hooks/useCanUseTool.js'
 import { assembleToolPool } from 'src/tools.js'
 import {
+  createAssistantMessage,
+  createUserMessage,
   getAssistantMessageText,
   getUserMessageText,
   hasSuccessfulToolCall,
@@ -26,6 +28,8 @@ import {
   READ_FILE_STATE_CACHE_SIZE,
 } from 'src/utils/fileStateCache.js'
 import { hasPermissionsToUseTool } from 'src/utils/permissions/permissions.js'
+import { isEnvTruthy } from 'src/utils/envUtils.js'
+import { isFirstPartyAnthropicBaseUrl } from 'src/utils/model/providers.js'
 import {
   getSettings_DEPRECATED,
   getSettingsWithSources,
@@ -69,6 +73,15 @@ const DAEMON_TICK_MAX_TURNS = 4
 const TELEGRAM_REPLY_MAX_TURNS = 6
 const DAEMON_TICK_TIMEOUT_MS = 90_000
 const TELEGRAM_REPLY_TIMEOUT_MS = 120_000
+const MAX_ACTIVE_DAEMON_HISTORY_MESSAGES = 10_000
+const TARGET_PERSISTED_DAEMON_HISTORY_MESSAGES = 2_000
+const TARGET_PERSISTED_DAEMON_TAIL_MESSAGES = 1_000
+const TELEGRAM_PROMPT_HISTORY_MESSAGES = 220
+const AUTONOMOUS_PROMPT_HISTORY_MESSAGES = 140
+const DAEMON_COMPACTION_SUMMARY_MARKER = '[DAEMON_COMPACTION_SUMMARY_V1]'
+const COMPACTION_SUMMARY_MAX_ITEMS = 20
+const COMPACTION_SUMMARY_MAX_CHARS = 2_000
+const COMPACTION_ITEM_MAX_CHARS = 180
 
 type TelegramUpdate = {
   update_id?: number
@@ -229,6 +242,116 @@ export function resolvePersistedHistoryForDaemonTurn(input: {
   })
 }
 
+function truncateInline(input: string, maxChars: number): string {
+  if (input.length <= maxChars) {
+    return input
+  }
+  return `${input.slice(0, maxChars)}...[Truncated]`
+}
+
+function isDaemonCompactionSummaryMessage(message: unknown): boolean {
+  const assistantText = getAssistantMessageText(message as any)
+  return assistantText?.startsWith(DAEMON_COMPACTION_SUMMARY_MARKER) === true
+}
+
+function buildDaemonCompactionSummaryMessage(input: {
+  droppedHistory: unknown[]
+  retainedMessageCount: number
+}): unknown {
+  const snippets: string[] = []
+  for (
+    let i = input.droppedHistory.length - 1;
+    i >= 0 && snippets.length < COMPACTION_SUMMARY_MAX_ITEMS;
+    i--
+  ) {
+    const message = input.droppedHistory[i]
+    if (isDaemonCompactionSummaryMessage(message)) {
+      continue
+    }
+    const userText = getUserMessageText(message as any)?.trim()
+    if (userText) {
+      snippets.push(`User: ${truncateInline(userText, COMPACTION_ITEM_MAX_CHARS)}`)
+      continue
+    }
+    const assistantText = getAssistantMessageText(message as any)?.trim()
+    if (assistantText && assistantText !== IDLE_TOKEN) {
+      snippets.push(
+        `Kora: ${truncateInline(assistantText, COMPACTION_ITEM_MAX_CHARS)}`,
+      )
+    }
+  }
+  snippets.reverse()
+
+  const header = `${DAEMON_COMPACTION_SUMMARY_MARKER}
+Compacted ${input.droppedHistory.length} older messages.
+Retained ${input.retainedMessageCount} recent messages below.`
+  const body =
+    snippets.length > 0
+      ? `Recent compacted highlights:\n${snippets
+          .map((line, index) => `${index + 1}. ${line}`)
+          .join('\n')}`
+      : 'Recent compacted highlights:\n1. No textual highlights available.'
+  const text = truncateInline(
+    `${header}\n${body}`,
+    COMPACTION_SUMMARY_MAX_CHARS,
+  )
+
+  return {
+    type: 'assistant',
+    message: {
+      content: [{ type: 'text', text }],
+    },
+  }
+}
+
+export function compactDaemonSessionHistory(input: {
+  history: unknown[]
+  maxMessages: number
+  tailMessages: number
+}): unknown[] {
+  const baseHistory = input.history.filter(
+    message => !isDaemonCompactionSummaryMessage(message),
+  )
+  const safeMax = Math.max(1, input.maxMessages)
+  if (baseHistory.length <= safeMax) {
+    return baseHistory
+  }
+
+  const safeTail = Math.max(1, Math.min(input.tailMessages, safeMax - 1))
+  const splitIndex = Math.max(0, baseHistory.length - safeTail)
+  const droppedHistory = baseHistory.slice(0, splitIndex)
+  const retainedTail = baseHistory.slice(splitIndex)
+  if (droppedHistory.length === 0) {
+    return baseHistory.slice(-safeMax)
+  }
+
+  const summaryMessage = buildDaemonCompactionSummaryMessage({
+    droppedHistory,
+    retainedMessageCount: retainedTail.length,
+  })
+  return [summaryMessage, ...retainedTail]
+}
+
+export function selectDaemonPromptHistoryWindow(input: {
+  history: unknown[]
+  maxMessages: number
+}): unknown[] {
+  const safeMax = Math.max(1, input.maxMessages)
+  if (input.history.length <= safeMax) {
+    return [...input.history]
+  }
+
+  const tail = input.history.slice(-safeMax)
+  const mostRecentSummary = [...input.history]
+    .reverse()
+    .find(message => isDaemonCompactionSummaryMessage(message))
+  if (!mostRecentSummary || tail.includes(mostRecentSummary)) {
+    return tail
+  }
+
+  return [mostRecentSummary, ...tail]
+}
+
 function getLastAssistantText(history: unknown[]): string | null {
   for (let i = history.length - 1; i >= 0; i--) {
     const text = getAssistantMessageText(history[i] as any)
@@ -342,10 +465,158 @@ function stripTrailingIdleToken(input: string): string {
   return input.replace(/\s*<idle>\s*$/i, '').trim()
 }
 
+function buildTelegramFailureNotice(error: string): string {
+  const summary = error.trim().replace(/\s+/g, ' ')
+  return [
+    'Kora daemon is running, but your request failed.',
+    summary ? `Reason: ${summary}` : null,
+    'Please retry in a moment.',
+  ]
+    .filter(Boolean)
+    .join('\n')
+}
+
 export function didPushNotificationSucceed(messages: unknown[]): boolean {
   return [PUSH_NOTIFICATION_TOOL_NAME, PUSH_NOTIFICATION_TOOL_ALIAS, TELEGRAM_PUSH_TOOL_ALIAS].some(
     toolName => hasSuccessfulToolCall(messages as any, toolName),
   )
+}
+
+function extractPushNotificationMessageFromInput(input: unknown): string | null {
+  const readMessageField = (candidate: Record<string, unknown>): string | null => {
+    const message = candidate.message
+    if (typeof message !== 'string') {
+      return null
+    }
+    const trimmed = message.trim()
+    return trimmed.length > 0 ? trimmed : null
+  }
+
+  if (input && typeof input === 'object' && !Array.isArray(input)) {
+    return readMessageField(input as Record<string, unknown>)
+  }
+
+  if (typeof input === 'string') {
+    try {
+      const parsed = JSON.parse(input) as unknown
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return readMessageField(parsed as Record<string, unknown>)
+      }
+    } catch {
+      // Ignore non-JSON string inputs.
+    }
+  }
+
+  return null
+}
+
+export function getMostRecentSuccessfulPushNotificationText(
+  messages: unknown[],
+): string | null {
+  const pushToolMessagesByUseId = new Map<string, string>()
+
+  for (const message of messages) {
+    if (!message || typeof message !== 'object') {
+      continue
+    }
+    const typedMessage = message as Record<string, unknown>
+    if (typedMessage.type !== 'assistant') {
+      continue
+    }
+    const rawMessage = typedMessage.message
+    if (!rawMessage || typeof rawMessage !== 'object') {
+      continue
+    }
+    const content = (rawMessage as Record<string, unknown>).content
+    if (!Array.isArray(content)) {
+      continue
+    }
+
+    for (const block of content) {
+      if (!block || typeof block !== 'object') {
+        continue
+      }
+      const typedBlock = block as Record<string, unknown>
+      if (
+        typedBlock.type !== 'tool_use' ||
+        typeof typedBlock.id !== 'string' ||
+        !isPushNotificationToolName(
+          typeof typedBlock.name === 'string' ? typedBlock.name : undefined,
+        )
+      ) {
+        continue
+      }
+      const text = extractPushNotificationMessageFromInput(typedBlock.input)
+      if (text) {
+        pushToolMessagesByUseId.set(typedBlock.id, text)
+      }
+    }
+  }
+
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i]
+    if (!message || typeof message !== 'object') {
+      continue
+    }
+    const typedMessage = message as Record<string, unknown>
+    if (typedMessage.type !== 'user') {
+      continue
+    }
+    const rawMessage = typedMessage.message
+    if (!rawMessage || typeof rawMessage !== 'object') {
+      continue
+    }
+    const content = (rawMessage as Record<string, unknown>).content
+    if (!Array.isArray(content)) {
+      continue
+    }
+
+    for (let j = content.length - 1; j >= 0; j--) {
+      const block = content[j]
+      if (!block || typeof block !== 'object') {
+        continue
+      }
+      const typedBlock = block as Record<string, unknown>
+      if (typedBlock.type !== 'tool_result' || typedBlock.is_error === true) {
+        continue
+      }
+      if (typeof typedBlock.tool_use_id !== 'string') {
+        continue
+      }
+      const pushText = pushToolMessagesByUseId.get(typedBlock.tool_use_id)
+      if (pushText) {
+        return pushText
+      }
+    }
+  }
+
+  return null
+}
+
+function isTelegramUserMessageForUpdate(
+  message: unknown,
+  updateId: number,
+): boolean {
+  if (!message || typeof message !== 'object') {
+    return false
+  }
+  const typedMessage = message as Record<string, unknown>
+  if (typedMessage.type !== 'user') {
+    return false
+  }
+  const origin = typedMessage.origin
+  if (!origin || typeof origin !== 'object') {
+    return false
+  }
+  const typedOrigin = origin as Record<string, unknown>
+  return typedOrigin.kind === 'telegram' && typedOrigin.updateId === updateId
+}
+
+export function hasPersistedTelegramUpdate(
+  history: unknown[],
+  updateId: number,
+): boolean {
+  return history.some(message => isTelegramUserMessageForUpdate(message, updateId))
 }
 
 function isPushNotificationToolName(name: string | undefined): boolean {
@@ -561,17 +832,37 @@ export class KairosLoopController {
         break
       }
 
+      const targetSession = await this.selectTargetSession()
+      if (!targetSession) {
+        break
+      }
+      const persisted = await this.persistTelegramInboundMessage({
+        sessionId: targetSession.id,
+        updateId,
+        text,
+        username: message?.from?.username ?? message?.from?.first_name,
+      })
+      if (!persisted) {
+        break
+      }
+
+      nextOffset = updateId + 1
+      if (nextOffset !== this.state.telegramLastUpdateId) {
+        this.state.telegramLastUpdateId = nextOffset
+        await writeLoopState(this.state)
+      }
+
       const result = await this.tick({
         manual: true,
+        sessionId: targetSession.id,
         telegramMessage: {
           text,
           username: message?.from?.username ?? message?.from?.first_name,
         },
       })
-      if (!shouldAdvanceTelegramOffsetAfterTick(result)) {
+      if (result.status === 'skipped' && result.reason === 'busy') {
         break
       }
-      nextOffset = updateId + 1
     }
 
     if (
@@ -581,6 +872,81 @@ export class KairosLoopController {
       this.state.telegramLastUpdateId = nextOffset
       await writeLoopState(this.state)
     }
+  }
+
+  private async persistTelegramInboundMessage(input: {
+    sessionId: string
+    updateId: number
+    text: string
+    username?: string
+  }): Promise<boolean> {
+    const session = await getSession(input.sessionId)
+    if (!session) {
+      return false
+    }
+    const trimmedText = input.text.trim()
+    if (!trimmedText) {
+      return false
+    }
+
+    const currentHistory = Array.isArray(session.history) ? [...session.history] : []
+    if (hasPersistedTelegramUpdate(currentHistory, input.updateId)) {
+      return true
+    }
+
+    const nextHistory = compactDaemonSessionHistory({
+      history: [
+        ...currentHistory,
+        createUserMessage({
+          content: trimmedText,
+          origin: {
+            kind: 'telegram',
+            updateId: input.updateId,
+            username: input.username,
+          },
+        }),
+      ],
+      maxMessages: TARGET_PERSISTED_DAEMON_HISTORY_MESSAGES,
+      tailMessages: TARGET_PERSISTED_DAEMON_TAIL_MESSAGES,
+    })
+
+    await updateSessionHistory({
+      sessionId: session.id,
+      history: nextHistory,
+      ownerPid: process.pid,
+      ownerClientId: LOOP_OWNER_ID,
+      state: 'active',
+    })
+    return true
+  }
+
+  private async persistTelegramAssistantReply(
+    sessionId: string,
+    replyText: string,
+  ): Promise<void> {
+    const trimmed = stripTrailingIdleToken(replyText).trim()
+    if (!trimmed) {
+      return
+    }
+
+    const session = await getSession(sessionId)
+    if (!session) {
+      return
+    }
+
+    const currentHistory = Array.isArray(session.history) ? [...session.history] : []
+    const nextHistory = compactDaemonSessionHistory({
+      history: [...currentHistory, createAssistantMessage({ content: trimmed })],
+      maxMessages: TARGET_PERSISTED_DAEMON_HISTORY_MESSAGES,
+      tailMessages: TARGET_PERSISTED_DAEMON_TAIL_MESSAGES,
+    })
+    await updateSessionHistory({
+      sessionId: session.id,
+      history: nextHistory,
+      ownerPid: process.pid,
+      ownerClientId: LOOP_OWNER_ID,
+      state: 'active',
+    })
   }
 
   private async loadMcpRuntime(): Promise<void> {
@@ -669,7 +1035,9 @@ export class KairosLoopController {
     await writeLoopState(this.state)
 
     if (options.simulateMalformed) {
-      return this.failTick(targetSession.id, 'Simulated malformed output')
+      return this.failTick(targetSession.id, 'Simulated malformed output', {
+        notifyTelegramOnFailure: options.telegramMessage !== undefined,
+      })
     }
 
     try {
@@ -679,6 +1047,7 @@ export class KairosLoopController {
         ownerClientId: LOOP_OWNER_ID,
         projectPath: targetSession.projectPath,
         transcriptPath: targetSession.transcriptPath,
+        syncHistoryFromTranscript: options.telegramMessage === undefined,
       })
 
       const morningWeatherDateKey =
@@ -695,15 +1064,15 @@ export class KairosLoopController {
           options.telegramMessage === undefined
             ? 'autonomous_tick'
             : 'telegram_reply',
-        persistenceMode:
-          options.telegramMessage === undefined
-            ? 'drop_new_turn'
-            : 'append_full_turn',
         stopAfterFirstPush: options.telegramMessage !== undefined,
         telegramUsername: options.telegramMessage?.username,
       })
       if (turn.malformed) {
         if (options.telegramMessage && turn.pushNotificationSucceeded) {
+          const pushedText = turn.pushNotificationText ?? turn.assistantText
+          if (pushedText) {
+            await this.persistTelegramAssistantReply(attached.session.id, pushedText)
+          }
           this.state.consecutiveFailures = 0
           this.state.status = 'running'
           this.state.backoffUntil = null
@@ -719,6 +1088,7 @@ export class KairosLoopController {
         }
         return this.failTick(attached.session.id, turn.error, {
           suppressBackoff: options.telegramMessage !== undefined,
+          notifyTelegramOnFailure: options.telegramMessage !== undefined,
         })
       }
       if (options.telegramMessage && !turn.pushNotificationSucceeded) {
@@ -731,6 +1101,7 @@ export class KairosLoopController {
             ? await this.sendTelegramFallbackMessage(fallbackText)
             : false
         if (fallbackDelivered) {
+          await this.persistTelegramAssistantReply(attached.session.id, fallbackText)
           this.state.consecutiveFailures = 0
           this.state.status = 'running'
           this.state.backoffUntil = null
@@ -747,11 +1118,17 @@ export class KairosLoopController {
         return this.failTick(
           attached.session.id,
           'Telegram reply turn completed without a successful PushNotification call or fallback delivery',
-          { suppressBackoff: true },
+          { suppressBackoff: true, notifyTelegramOnFailure: true },
         )
       }
       if (morningWeatherDateKey && turn.pushNotificationSucceeded) {
         this.state.lastWeatherPingDatePt = morningWeatherDateKey
+      }
+      if (options.telegramMessage && turn.pushNotificationSucceeded) {
+        const pushedText = turn.pushNotificationText ?? turn.assistantText
+        if (pushedText) {
+          await this.persistTelegramAssistantReply(attached.session.id, pushedText)
+        }
       }
 
       this.state.consecutiveFailures = 0
@@ -771,6 +1148,7 @@ export class KairosLoopController {
       const message = error instanceof Error ? error.message : String(error)
       return this.failTick(targetSession.id, message, {
         suppressBackoff: options.telegramMessage !== undefined,
+        notifyTelegramOnFailure: options.telegramMessage !== undefined,
       })
     }
   }
@@ -789,7 +1167,10 @@ export class KairosLoopController {
   private async failTick(
     sessionId: string,
     error: string,
-    options: { suppressBackoff?: boolean } = {},
+    options: {
+      suppressBackoff?: boolean
+      notifyTelegramOnFailure?: boolean
+    } = {},
   ): Promise<TickResult> {
     this.state.lastError = error
     if (!options.suppressBackoff) {
@@ -801,6 +1182,13 @@ export class KairosLoopController {
       }
     }
     await writeLoopState(this.state)
+    if (options.notifyTelegramOnFailure) {
+      const notice = buildTelegramFailureNotice(error)
+      const delivered = await this.sendTelegramFallbackMessage(notice)
+      if (delivered) {
+        await this.persistTelegramAssistantReply(sessionId, notice)
+      }
+    }
     return {
       status: 'failed',
       sessionId,
@@ -830,6 +1218,23 @@ export class KairosLoopController {
     if (this.state.activeSessionId) {
       const active = await getSession(this.state.activeSessionId)
       if (active) {
+        if (active.history.length > MAX_ACTIVE_DAEMON_HISTORY_MESSAGES) {
+          const compacted = compactDaemonSessionHistory({
+            history: active.history,
+            maxMessages: TARGET_PERSISTED_DAEMON_HISTORY_MESSAGES,
+            tailMessages: TARGET_PERSISTED_DAEMON_TAIL_MESSAGES,
+          })
+          if (compacted.length < active.history.length) {
+            await updateSessionHistory({
+              sessionId: active.id,
+              history: compacted,
+              ownerPid: process.pid,
+              ownerClientId: LOOP_OWNER_ID,
+              state: 'active',
+            })
+            active.history = compacted
+          }
+        }
         return {
           id: active.id,
           projectPath: active.projectPath,
@@ -861,7 +1266,6 @@ export class KairosLoopController {
     history: unknown[]
   }, prompt: string, options: {
     channelMode: DaemonChannelMode
-    persistenceMode: DaemonHistoryPersistenceMode
     stopAfterFirstPush?: boolean
     telegramUsername?: string
   }): Promise<{
@@ -870,10 +1274,11 @@ export class KairosLoopController {
     assistantText: string | null
     error: string
     pushNotificationSucceeded: boolean
+    pushNotificationText: string | null
   }> {
     setSessionSource('daemon')
     setIsInteractive(false)
-    setSessionPersistenceDisabled(options.channelMode !== 'telegram_reply')
+    setSessionPersistenceDisabled(true)
     setKairosActive(true)
     setOriginalCwd(session.projectPath)
     setCwdState(session.projectPath)
@@ -896,18 +1301,39 @@ export class KairosLoopController {
     const getAppState = () => appStore.getState()
     const setAppState = (f: (prev: AppState) => AppState) => appStore.setState(f)
 
-    const tools = assembleToolPool(
+    const fullToolPool = assembleToolPool(
       getAppState().toolPermissionContext,
       getAppState().mcp.tools,
     )
-    const commands = [
+    const fullCommandPool = [
       ...(await getCommands(session.projectPath)),
       ...getAppState().mcp.commands,
     ]
+    const isNonFirstPartyEndpoint = !isFirstPartyAnthropicBaseUrl(
+      process.env.ANTHROPIC_BASE_URL ?? '',
+    )
+    const useToollessTelegramFallback =
+      options.channelMode === 'telegram_reply' &&
+      isNonFirstPartyEndpoint &&
+      !isEnvTruthy(process.env.KORA_TELEGRAM_FORCE_TOOLS)
+    const tools = useToollessTelegramFallback ? [] : fullToolPool
+    const commands = useToollessTelegramFallback ? [] : fullCommandPool
     const mcpClients = getAppState().mcp.clients
     const readFileCache = createFileStateCacheWithSizeLimit(READ_FILE_STATE_CACHE_SIZE)
     const sourceHistory = Array.isArray(session.history) ? [...session.history] : []
-    const mutableMessages = [...sourceHistory]
+    const compactedSourceHistory = compactDaemonSessionHistory({
+      history: sourceHistory,
+      maxMessages: TARGET_PERSISTED_DAEMON_HISTORY_MESSAGES,
+      tailMessages: TARGET_PERSISTED_DAEMON_TAIL_MESSAGES,
+    })
+    const promptHistory = selectDaemonPromptHistoryWindow({
+      history: compactedSourceHistory,
+      maxMessages:
+        options.channelMode === 'telegram_reply'
+          ? TELEGRAM_PROMPT_HISTORY_MESSAGES
+          : AUTONOMOUS_PROMPT_HISTORY_MESSAGES,
+    })
+    const mutableMessages = [...promptHistory]
     const daemonTurnModel = resolveDaemonTurnModel()
     const resonancePrompt = renderResonancePolicyPrompt(
       resolveResonancePolicy({
@@ -1037,20 +1463,27 @@ export class KairosLoopController {
     const idle = sawIdle || assistantText === IDLE_TOKEN
     const pushNotificationSucceeded =
       didPushNotificationSucceed(mutableMessages as any)
-    const persistedHistory = resolvePersistedHistoryForDaemonTurn({
-      mutableHistory: mutableMessages,
-      initialLength,
-      internalPrompt: prompt,
-      persistenceMode: options.persistenceMode,
-    })
+    const pushNotificationText = getMostRecentSuccessfulPushNotificationText(
+      mutableMessages,
+    )
+    if (options.channelMode === 'autonomous_tick') {
+      const persistedHistory = compactDaemonSessionHistory({
+        history: compactedSourceHistory.filter(message => {
+          const assistantText = getAssistantMessageText(message as any)
+          return assistantText?.trim() !== IDLE_TOKEN
+        }),
+        maxMessages: TARGET_PERSISTED_DAEMON_HISTORY_MESSAGES,
+        tailMessages: TARGET_PERSISTED_DAEMON_TAIL_MESSAGES,
+      })
 
-    await updateSessionHistory({
-      sessionId: session.id,
-      history: persistedHistory,
-      ownerPid: process.pid,
-      ownerClientId: LOOP_OWNER_ID,
-      state: 'active',
-    })
+      await updateSessionHistory({
+        sessionId: session.id,
+        history: persistedHistory,
+        ownerPid: process.pid,
+        ownerClientId: LOOP_OWNER_ID,
+        state: 'active',
+      })
+    }
 
     if (streamError) {
       return {
@@ -1059,6 +1492,7 @@ export class KairosLoopController {
         assistantText: null,
         error: streamError,
         pushNotificationSucceeded,
+        pushNotificationText,
       }
     }
 
@@ -1070,6 +1504,7 @@ export class KairosLoopController {
         assistantText: null,
         error: 'Malformed output: no assistant text was produced',
         pushNotificationSucceeded,
+        pushNotificationText,
       }
     }
 
@@ -1079,6 +1514,7 @@ export class KairosLoopController {
       assistantText: idle ? null : assistantText,
       error: '',
       pushNotificationSucceeded,
+      pushNotificationText,
     }
   }
 }

@@ -1,10 +1,14 @@
 import { describe, expect, test } from 'bun:test'
 import {
+  compactDaemonSessionHistory,
   computePersistedDaemonHistory,
   didPushNotificationSucceed,
+  getMostRecentSuccessfulPushNotificationText,
+  hasPersistedTelegramUpdate,
   isHumanTelegramSender,
   resolveDaemonTurnModelFromSources,
   resolvePersistedHistoryForDaemonTurn,
+  selectDaemonPromptHistoryWindow,
   shouldDenyPushToolUseInTelegramTurn,
   shouldAdvanceTelegramOffsetAfterTick,
 } from './kairosLoop.js'
@@ -84,6 +88,103 @@ describe('didPushNotificationSucceed', () => {
       },
     ]
     expect(didPushNotificationSucceed(messages)).toBe(false)
+  })
+})
+
+describe('getMostRecentSuccessfulPushNotificationText', () => {
+  test('returns message payload from latest successful push tool call', () => {
+    const messages = [
+      {
+        type: 'assistant',
+        message: {
+          content: [
+            {
+              type: 'tool_use',
+              id: 'tool-old',
+              name: 'PushNotification',
+              input: { message: 'older delivery' },
+            },
+          ],
+        },
+      },
+      {
+        type: 'user',
+        message: {
+          content: [{ type: 'tool_result', tool_use_id: 'tool-old', content: 'ok' }],
+        },
+      },
+      {
+        type: 'assistant',
+        message: {
+          content: [
+            {
+              type: 'tool_use',
+              id: 'tool-new',
+              name: 'TelegramPushTool',
+              input: { message: 'final delivery' },
+            },
+          ],
+        },
+      },
+      {
+        type: 'user',
+        message: {
+          content: [{ type: 'tool_result', tool_use_id: 'tool-new', content: 'ok' }],
+        },
+      },
+    ]
+
+    expect(getMostRecentSuccessfulPushNotificationText(messages)).toBe(
+      'final delivery',
+    )
+  })
+
+  test('ignores failed tool results', () => {
+    const messages = [
+      {
+        type: 'assistant',
+        message: {
+          content: [
+            {
+              type: 'tool_use',
+              id: 'tool-err',
+              name: 'PushNotificationTool',
+              input: { message: 'should not count' },
+            },
+          ],
+        },
+      },
+      {
+        type: 'user',
+        message: {
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'tool-err',
+              is_error: true,
+              content: 'failed',
+            },
+          ],
+        },
+      },
+    ]
+
+    expect(getMostRecentSuccessfulPushNotificationText(messages)).toBeNull()
+  })
+})
+
+describe('hasPersistedTelegramUpdate', () => {
+  test('matches telegram-origin user messages by update id', () => {
+    const history = [
+      {
+        type: 'user',
+        message: { content: 'hello' },
+        origin: { kind: 'telegram', updateId: 123 },
+      },
+    ]
+
+    expect(hasPersistedTelegramUpdate(history, 123)).toBe(true)
+    expect(hasPersistedTelegramUpdate(history, 124)).toBe(false)
   })
 })
 
@@ -175,6 +276,65 @@ describe('resolvePersistedHistoryForDaemonTurn', () => {
     expect(persisted).toHaveLength(3)
     expect((persisted[0] as any).message.content).toBe('keep me')
     expect((persisted[1] as any).message.content).toBe('what did you find today?')
+  })
+})
+
+describe('compactDaemonSessionHistory', () => {
+  test('compacts oversized history into summary + tail window', () => {
+    const history = Array.from({ length: 12 }, (_, i) => ({
+      type: i % 2 === 0 ? 'user' : 'assistant',
+      message:
+        i % 2 === 0
+          ? { content: `user message ${i}` }
+          : { content: [{ type: 'text', text: `assistant message ${i}` }] },
+    }))
+
+    const compacted = compactDaemonSessionHistory({
+      history,
+      maxMessages: 6,
+      tailMessages: 3,
+    })
+
+    expect(compacted.length).toBe(4)
+    expect((compacted[0] as any).type).toBe('assistant')
+    const summaryText = (((compacted[0] as any).message?.content ?? [])[0] as any)?.text
+    expect(summaryText).toContain('[DAEMON_COMPACTION_SUMMARY_V1]')
+    expect((compacted[2] as any).message.content).toBe('user message 10')
+  })
+
+  test('returns history as-is when below threshold', () => {
+    const history = [{ type: 'user', message: { content: 'hello' } }]
+    const compacted = compactDaemonSessionHistory({
+      history,
+      maxMessages: 5,
+      tailMessages: 2,
+    })
+    expect(compacted).toHaveLength(1)
+    expect((compacted[0] as any).message.content).toBe('hello')
+  })
+})
+
+describe('selectDaemonPromptHistoryWindow', () => {
+  test('keeps latest summary marker with tail slice', () => {
+    const summary = {
+      type: 'assistant',
+      message: {
+        content: [{ type: 'text', text: '[DAEMON_COMPACTION_SUMMARY_V1]\nsummary' }],
+      },
+    }
+    const tail = Array.from({ length: 10 }, (_, i) => ({
+      type: 'user',
+      message: { content: `tail ${i}` },
+    }))
+    const selected = selectDaemonPromptHistoryWindow({
+      history: [summary, ...tail],
+      maxMessages: 4,
+    })
+
+    expect(selected).toHaveLength(5)
+    const firstText = (((selected[0] as any).message?.content ?? [])[0] as any)?.text
+    expect(firstText).toContain('[DAEMON_COMPACTION_SUMMARY_V1]')
+    expect((selected.at(-1) as any).message.content).toBe('tail 9')
   })
 })
 

@@ -354,8 +354,6 @@ export async function syncActiveSessions(): Promise<void> {
       session.state = 'idle'
       session.updatedAt = nowIso()
       await writeSession(session)
-      continue
     }
-    await syncSessionHistory(session)
   }
 }

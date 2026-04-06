@@ -70,13 +70,13 @@ const TELEGRAM_MESSAGE_MAX_PROMPT_CHARS = 4_000
 const TELEGRAM_GET_UPDATES_LIMIT = 20
 const TELEGRAM_MAX_SAFE_CHARS = 4_000
 const DAEMON_TICK_MAX_TURNS = 4
-const TELEGRAM_REPLY_MAX_TURNS = 6
+const TELEGRAM_REPLY_MAX_TURNS = 2
 const DAEMON_TICK_TIMEOUT_MS = 90_000
-const TELEGRAM_REPLY_TIMEOUT_MS = 120_000
+const TELEGRAM_REPLY_TIMEOUT_MS = 45_000
 const MAX_ACTIVE_DAEMON_HISTORY_MESSAGES = 10_000
 const TARGET_PERSISTED_DAEMON_HISTORY_MESSAGES = 2_000
 const TARGET_PERSISTED_DAEMON_TAIL_MESSAGES = 1_000
-const TELEGRAM_PROMPT_HISTORY_MESSAGES = 220
+const TELEGRAM_PROMPT_HISTORY_MESSAGES = 60
 const AUTONOMOUS_PROMPT_HISTORY_MESSAGES = 140
 const DAEMON_COMPACTION_SUMMARY_MARKER = '[DAEMON_COMPACTION_SUMMARY_V1]'
 const COMPACTION_SUMMARY_MAX_ITEMS = 20
@@ -221,6 +221,62 @@ export function computePersistedDaemonHistory(input: {
     input.history.slice(0, safeInitialLength),
     input.internalPrompt,
   )
+}
+
+function extractTelegramOriginIfPresent(
+  message: unknown,
+): { kind: 'telegram'; updateId?: number; username?: string } | undefined {
+  if (!message || typeof message !== 'object') {
+    return undefined
+  }
+  const origin = (message as Record<string, unknown>).origin
+  if (!origin || typeof origin !== 'object') {
+    return undefined
+  }
+  const typedOrigin = origin as Record<string, unknown>
+  if (typedOrigin.kind !== 'telegram') {
+    return undefined
+  }
+  const extracted: { kind: 'telegram'; updateId?: number; username?: string } = {
+    kind: 'telegram',
+  }
+  if (
+    typeof typedOrigin.updateId === 'number' &&
+    Number.isInteger(typedOrigin.updateId) &&
+    typedOrigin.updateId >= 0
+  ) {
+    extracted.updateId = typedOrigin.updateId
+  }
+  if (typeof typedOrigin.username === 'string' && typedOrigin.username.trim()) {
+    extracted.username = typedOrigin.username.trim()
+  }
+  return extracted
+}
+
+export function canonicalizeDaemonConversationHistory(history: unknown[]): unknown[] {
+  const canonical: unknown[] = []
+  for (const message of history) {
+    const userText = getUserMessageText(message as any)?.trim()
+    if (userText && userText !== IDLE_TOKEN) {
+      canonical.push(
+        createUserMessage({
+          content: userText,
+          origin: extractTelegramOriginIfPresent(message),
+        }),
+      )
+      continue
+    }
+
+    const assistantText = getAssistantMessageText(message as any)?.trim()
+    if (assistantText && assistantText !== IDLE_TOKEN) {
+      canonical.push(
+        createAssistantMessage({
+          content: assistantText,
+        }),
+      )
+    }
+  }
+  return canonical
 }
 
 export function resolvePersistedHistoryForDaemonTurn(input: {
@@ -889,7 +945,9 @@ export class KairosLoopController {
       return false
     }
 
-    const currentHistory = Array.isArray(session.history) ? [...session.history] : []
+    const currentHistory = canonicalizeDaemonConversationHistory(
+      Array.isArray(session.history) ? session.history : [],
+    )
     if (hasPersistedTelegramUpdate(currentHistory, input.updateId)) {
       return true
     }
@@ -934,7 +992,9 @@ export class KairosLoopController {
       return
     }
 
-    const currentHistory = Array.isArray(session.history) ? [...session.history] : []
+    const currentHistory = canonicalizeDaemonConversationHistory(
+      Array.isArray(session.history) ? session.history : [],
+    )
     const nextHistory = compactDaemonSessionHistory({
       history: [...currentHistory, createAssistantMessage({ content: trimmed })],
       maxMessages: TARGET_PERSISTED_DAEMON_HISTORY_MESSAGES,
@@ -1047,7 +1107,7 @@ export class KairosLoopController {
         ownerClientId: LOOP_OWNER_ID,
         projectPath: targetSession.projectPath,
         transcriptPath: targetSession.transcriptPath,
-        syncHistoryFromTranscript: options.telegramMessage === undefined,
+        syncHistoryFromTranscript: false,
       })
 
       const morningWeatherDateKey =
@@ -1218,22 +1278,31 @@ export class KairosLoopController {
     if (this.state.activeSessionId) {
       const active = await getSession(this.state.activeSessionId)
       if (active) {
-        if (active.history.length > MAX_ACTIVE_DAEMON_HISTORY_MESSAGES) {
+        const canonicalHistory = canonicalizeDaemonConversationHistory(
+          Array.isArray(active.history) ? active.history : [],
+        )
+        let normalizedHistory = canonicalHistory
+        if (normalizedHistory.length > MAX_ACTIVE_DAEMON_HISTORY_MESSAGES) {
           const compacted = compactDaemonSessionHistory({
-            history: active.history,
+            history: normalizedHistory,
             maxMessages: TARGET_PERSISTED_DAEMON_HISTORY_MESSAGES,
             tailMessages: TARGET_PERSISTED_DAEMON_TAIL_MESSAGES,
           })
-          if (compacted.length < active.history.length) {
-            await updateSessionHistory({
-              sessionId: active.id,
-              history: compacted,
-              ownerPid: process.pid,
-              ownerClientId: LOOP_OWNER_ID,
-              state: 'active',
-            })
-            active.history = compacted
-          }
+          normalizedHistory = compacted
+        }
+        const originalCount = Array.isArray(active.history) ? active.history.length : 0
+        const shouldPersistNormalized =
+          normalizedHistory.length !== originalCount ||
+          originalCount !== canonicalHistory.length
+        if (shouldPersistNormalized) {
+          await updateSessionHistory({
+            sessionId: active.id,
+            history: normalizedHistory,
+            ownerPid: process.pid,
+            ownerClientId: LOOP_OWNER_ID,
+            state: 'active',
+          })
+          active.history = normalizedHistory
         }
         return {
           id: active.id,
@@ -1320,7 +1389,9 @@ export class KairosLoopController {
     const commands = useToollessTelegramFallback ? [] : fullCommandPool
     const mcpClients = getAppState().mcp.clients
     const readFileCache = createFileStateCacheWithSizeLimit(READ_FILE_STATE_CACHE_SIZE)
-    const sourceHistory = Array.isArray(session.history) ? [...session.history] : []
+    const sourceHistory = canonicalizeDaemonConversationHistory(
+      Array.isArray(session.history) ? session.history : [],
+    )
     const compactedSourceHistory = compactDaemonSessionHistory({
       history: sourceHistory,
       maxMessages: TARGET_PERSISTED_DAEMON_HISTORY_MESSAGES,

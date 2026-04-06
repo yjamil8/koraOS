@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import {
+  canonicalizeDaemonConversationHistory,
   compactDaemonSessionHistory,
   computePersistedDaemonHistory,
   didPushNotificationSucceed,
@@ -276,6 +277,38 @@ describe('resolvePersistedHistoryForDaemonTurn', () => {
     expect(persisted).toHaveLength(3)
     expect((persisted[0] as any).message.content).toBe('keep me')
     expect((persisted[1] as any).message.content).toBe('what did you find today?')
+  })
+})
+
+describe('canonicalizeDaemonConversationHistory', () => {
+  test('keeps only user/assistant text and strips transcript noise types', () => {
+    const history = [
+      { type: 'last-prompt', value: 'nope' },
+      { type: 'file-history-snapshot', value: 'nope' },
+      {
+        type: 'user',
+        message: { content: 'hello from telegram' },
+        origin: { kind: 'telegram', updateId: 42, username: 'yousuf' },
+      },
+      {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'Hi there' }] },
+      },
+      {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: '<idle>' }] },
+      },
+    ]
+
+    const canonical = canonicalizeDaemonConversationHistory(history)
+    expect(canonical).toHaveLength(2)
+    expect((canonical[0] as any).type).toBe('user')
+    expect((canonical[0] as any).message.content).toBe('hello from telegram')
+    expect((canonical[0] as any).origin.kind).toBe('telegram')
+    expect((canonical[0] as any).origin.updateId).toBe(42)
+    expect((canonical[1] as any).type).toBe('assistant')
+    const assistantText = (((canonical[1] as any).message?.content ?? [])[0] as any)?.text
+    expect(assistantText).toBe('Hi there')
   })
 })
 

@@ -2,6 +2,7 @@ import { createHash } from 'crypto'
 import { getSettings_DEPRECATED } from 'src/utils/settings/settings.js'
 import {
   readJustBidWatchConfig,
+  writeJustBidWatchConfig,
   type JustBidWatchConfig,
   type JustBidWatchRule,
 } from './justbidWatchConfig.js'
@@ -32,6 +33,12 @@ type ListingCandidate = {
 
 type MutableRunMetrics = {
   pagesScanned: number
+  searchEnabled: boolean
+  searchQueriesConfigured: number
+  searchQueriesRun: number
+  searchPagesToScan: number
+  searchPagesScanned: number
+  searchCandidatesCount: number
   scannedCount: number
   unseenCount: number
   detailFetchCount: number
@@ -126,6 +133,38 @@ function buildListingPageUrl(config: JustBidWatchConfig, page: number): string {
     url.searchParams.delete('page')
   }
   return url.toString()
+}
+
+function buildSearchPageUrl(
+  config: JustBidWatchConfig,
+  searchTerm: string,
+  page: number,
+): string {
+  const url = new URL('/items', config.baseUrl)
+  url.searchParams.set('search', searchTerm)
+  url.searchParams.set('sort', config.searchSort)
+  if (page > 1) {
+    url.searchParams.set('page', String(page))
+  } else {
+    url.searchParams.delete('page')
+  }
+  return url.toString()
+}
+
+function buildSearchTerms(rules: JustBidWatchRule[]): string[] {
+  const seen = new Set<string>()
+  const terms: string[] = []
+  for (const rule of rules) {
+    for (const keyword of rule.keywords) {
+      const normalized = normalizeWhitespace(keyword).toLowerCase()
+      if (!normalized || seen.has(normalized)) {
+        continue
+      }
+      seen.add(normalized)
+      terms.push(normalized)
+    }
+  }
+  return terms
 }
 
 function buildAbsoluteItemUrl(config: JustBidWatchConfig, href: string): string {
@@ -320,6 +359,12 @@ function buildNotificationMessage(input: {
   ].join('\n')
 }
 
+export const __justbidWatcherTestUtils = {
+  buildSearchPageUrl,
+  buildSearchTerms,
+  extractListingCandidates,
+}
+
 export class JustBidWatcherController {
   private config: JustBidWatchConfig | null = null
   private state: JustBidWatchState | null = null
@@ -400,6 +445,12 @@ export class JustBidWatcherController {
         error: input.error,
         pagesConfigured: input.pagesConfigured,
         pagesScanned: input.metrics.pagesScanned,
+        searchEnabled: input.metrics.searchEnabled,
+        searchQueriesConfigured: input.metrics.searchQueriesConfigured,
+        searchQueriesRun: input.metrics.searchQueriesRun,
+        searchPagesToScan: input.metrics.searchPagesToScan,
+        searchPagesScanned: input.metrics.searchPagesScanned,
+        searchCandidatesCount: input.metrics.searchCandidatesCount,
         scannedCount: input.metrics.scannedCount,
         unseenCount: input.metrics.unseenCount,
         detailFetchCount: input.metrics.detailFetchCount,
@@ -485,6 +536,12 @@ export class JustBidWatcherController {
     const pagesConfigured = this.config.pagesToScan
     const metrics: MutableRunMetrics = {
       pagesScanned: 0,
+      searchEnabled: this.config.searchEnabled,
+      searchQueriesConfigured: 0,
+      searchQueriesRun: 0,
+      searchPagesToScan: this.config.searchPagesToScan,
+      searchPagesScanned: 0,
+      searchCandidatesCount: 0,
       scannedCount: 0,
       unseenCount: 0,
       detailFetchCount: 0,
@@ -549,9 +606,97 @@ export class JustBidWatcherController {
     }
 
     try {
+      const warmStartPending = this.config.warmStartPending
       const pendingSeen: Record<string, string> = {}
       const observedIds = new Set<string>()
       const pageCandidatesByPage = new Map<number, ListingCandidate[]>()
+      const processCandidate = async (candidate: ListingCandidate): Promise<void> => {
+        if (observedIds.has(candidate.itemId)) {
+          addCount(metrics.skipReasonCounts, 'duplicate_in_page_window')
+          return
+        }
+        observedIds.add(candidate.itemId)
+        if (state.seen[candidate.itemId]) {
+          addCount(metrics.skipReasonCounts, 'already_seen')
+          return
+        }
+        metrics.unseenCount += 1
+
+        const seenAt = nowIso()
+        if (warmStartPending) {
+          pendingSeen[candidate.itemId] = seenAt
+          addCount(metrics.skipReasonCounts, 'warm_start_marked_seen')
+          return
+        }
+
+        if (!canMatchByTitle(candidate.title, rules)) {
+          pendingSeen[candidate.itemId] = seenAt
+          addCount(metrics.skipReasonCounts, 'title_prefilter_miss')
+          return
+        }
+
+        metrics.detailFetchCount += 1
+        const detailHtml = await fetchText(candidate.url, this.config.requestTimeoutMs)
+        const item = parseItemPage(detailHtml, candidate.url, candidate.itemId)
+        if (!item.title && candidate.title) {
+          item.title = candidate.title
+        }
+
+        for (const rule of rules) {
+          const result = matchWatchlistRule(item, rule, {
+            buyerPremiumRate: this.config.buyerPremiumRate,
+            lotFee: this.config.lotFee,
+            taxRate: this.config.taxRate,
+            defaultLocations: this.config.defaultLocations,
+          })
+          if (!result.match) {
+            addCount(
+              metrics.skipReasonCounts,
+              result.reasons[0] ? `rule_${result.reasons[0]}` : 'rule_mismatch',
+            )
+            continue
+          }
+          metrics.matchedCount += 1
+          addCount(metrics.matchesByRule, rule.id)
+
+          const notificationKey = item.itemId
+          if (state.notified[notificationKey]) {
+            addCount(metrics.skipReasonCounts, 'already_notified')
+            continue
+          }
+
+          await sendTelegramMessage(
+            buildNotificationMessage({ rule, item, allInCost: result.allInCost }),
+          )
+          metrics.notifiedCount += 1
+          addCount(metrics.notificationsByRule, rule.id)
+          state.notified[notificationKey] = seenAt
+        }
+
+        // Keep all new items deduped after first scan, regardless of match outcome.
+        pendingSeen[candidate.itemId] = seenAt
+      }
+
+      if (this.config.searchEnabled) {
+        const searchTerms = buildSearchTerms(rules)
+        metrics.searchQueriesConfigured = searchTerms.length
+
+        for (const term of searchTerms) {
+          metrics.searchQueriesRun += 1
+          for (let page = 1; page <= this.config.searchPagesToScan; page++) {
+            const searchUrl = buildSearchPageUrl(this.config, term, page)
+            const html = await fetchText(searchUrl, this.config.requestTimeoutMs)
+            const candidates = extractListingCandidates(html, this.config)
+            metrics.searchPagesScanned += 1
+            metrics.searchCandidatesCount += candidates.length
+            metrics.scannedCount += candidates.length
+
+            for (const candidate of candidates) {
+              await processCandidate(candidate)
+            }
+          }
+        }
+      }
 
       for (let page = 1; page <= this.config.pagesToScan; page++) {
         const listUrl = buildListingPageUrl(this.config, page)
@@ -577,63 +722,7 @@ export class JustBidWatcherController {
         }
 
         for (const candidate of candidates) {
-          if (observedIds.has(candidate.itemId)) {
-            addCount(metrics.skipReasonCounts, 'duplicate_in_page_window')
-            continue
-          }
-          observedIds.add(candidate.itemId)
-          if (state.seen[candidate.itemId]) {
-            addCount(metrics.skipReasonCounts, 'already_seen')
-            continue
-          }
-          metrics.unseenCount += 1
-
-          const seenAt = nowIso()
-          if (!canMatchByTitle(candidate.title, rules)) {
-            pendingSeen[candidate.itemId] = seenAt
-            addCount(metrics.skipReasonCounts, 'title_prefilter_miss')
-            continue
-          }
-
-          metrics.detailFetchCount += 1
-          const detailHtml = await fetchText(candidate.url, this.config.requestTimeoutMs)
-          const item = parseItemPage(detailHtml, candidate.url, candidate.itemId)
-          if (!item.title && candidate.title) {
-            item.title = candidate.title
-          }
-
-          for (const rule of rules) {
-            const result = matchWatchlistRule(item, rule, {
-              buyerPremiumRate: this.config.buyerPremiumRate,
-              lotFee: this.config.lotFee,
-              taxRate: this.config.taxRate,
-            })
-            if (!result.match) {
-              addCount(
-                metrics.skipReasonCounts,
-                result.reasons[0] ? `rule_${result.reasons[0]}` : 'rule_mismatch',
-              )
-              continue
-            }
-            metrics.matchedCount += 1
-            addCount(metrics.matchesByRule, rule.id)
-
-            const notificationKey = `${rule.id}:${item.itemId}`
-            if (rule.notifyOnce && state.notified[notificationKey]) {
-              addCount(metrics.skipReasonCounts, 'already_notified')
-              continue
-            }
-
-            await sendTelegramMessage(
-              buildNotificationMessage({ rule, item, allInCost: result.allInCost }),
-            )
-            metrics.notifiedCount += 1
-            addCount(metrics.notificationsByRule, rule.id)
-            state.notified[notificationKey] = seenAt
-          }
-
-          // Keep all new items deduped after first scan, regardless of match outcome.
-          pendingSeen[candidate.itemId] = seenAt
+          await processCandidate(candidate)
         }
       }
 
@@ -659,6 +748,14 @@ export class JustBidWatcherController {
       state.lastError = null
       state.consecutiveFailures = 0
       state.backoffUntil = null
+      if (warmStartPending) {
+        this.config.warmStartPending = false
+        try {
+          await writeJustBidWatchConfig(this.config)
+        } catch {
+          addCount(metrics.skipReasonCounts, 'warm_start_clear_failed')
+        }
+      }
       await writeJustBidWatchState(state)
       await this.appendRunLog({
         status: 'success',

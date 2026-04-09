@@ -25,11 +25,9 @@ describe('matchWatchlistRule', () => {
     keywords: ['airpods max'],
     excludeKeywords: ['case'],
     requiredCondition: ['Appears New'],
-    locations: [],
     maxCurrentBid: null,
     maxAllInCost: 300,
     minRetail: null,
-    notifyOnce: true,
   }
 
   const baseItem: JustBidItemDetails = {
@@ -47,6 +45,7 @@ describe('matchWatchlistRule', () => {
       buyerPremiumRate: 0.15,
       lotFee: 2,
       taxRate: 0,
+      defaultLocations: [],
     })
     expect(result.match).toBe(true)
     expect(result.allInCost).toBe(232)
@@ -62,6 +61,7 @@ describe('matchWatchlistRule', () => {
       {
         buyerPremiumRate: 0.15,
         lotFee: 2,
+        defaultLocations: [],
       },
     )
     expect(result.match).toBe(false)
@@ -74,13 +74,11 @@ describe('matchWatchlistRule', () => {
         ...baseItem,
         location: '2975 Venture Dr, Lincoln, CA 95648',
       },
-      {
-        ...baseRule,
-        locations: ['2975 Venture Dr Lincoln, CA'],
-      },
+      baseRule,
       {
         buyerPremiumRate: 0.15,
         lotFee: 2,
+        defaultLocations: ['2975 Venture Dr Lincoln, CA'],
       },
     )
     expect(result.match).toBe(true)
@@ -92,15 +90,30 @@ describe('matchWatchlistRule', () => {
         ...baseItem,
         location: '320 Commerce Cir, Sacramento',
       },
-      {
-        ...baseRule,
-        locations: ['320 Commerce Cir Sacramento, CA'],
-      },
+      baseRule,
       {
         buyerPremiumRate: 0.15,
         lotFee: 2,
+        defaultLocations: ['320 Commerce Cir Sacramento, CA'],
       },
     )
     expect(result.match).toBe(true)
+  })
+
+  test('rejects when item location does not match global default locations', () => {
+    const result = matchWatchlistRule(
+      {
+        ...baseItem,
+        location: 'Miami, FL',
+      },
+      baseRule,
+      {
+        buyerPremiumRate: 0.15,
+        lotFee: 2,
+        defaultLocations: ['320 Commerce Cir Sacramento, CA'],
+      },
+    )
+    expect(result.match).toBe(false)
+    expect(result.reasons).toContain('location_mismatch')
   })
 })

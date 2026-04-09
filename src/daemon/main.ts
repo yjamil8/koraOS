@@ -1,4 +1,5 @@
 import { spawn } from 'child_process'
+import { readFileSync } from 'fs'
 import {
   getDaemonLoopStatus,
   pauseDaemonLoop,
@@ -13,11 +14,48 @@ import {
   type StoredDaemonState,
   writeDaemonState,
 } from './state.js'
-import { KORA_DAEMON_PORT, getDaemonBaseUrl } from './config.js'
+import { KORA_DAEMON_HOST, KORA_DAEMON_PORT } from './config.js'
 
 const TERM_WAIT_MS = 5_000
 const KILL_WAIT_MS = 2_000
 const POLL_INTERVAL_MS = 100
+
+function isLikelyWsl(): boolean {
+  if (process.env.WSL_DISTRO_NAME) {
+    return true
+  }
+  try {
+    const procVersion = readFileSync('/proc/version', 'utf8').toLowerCase()
+    return procVersion.includes('microsoft') || procVersion.includes('wsl')
+  } catch {
+    return false
+  }
+}
+
+function isLoopbackHost(host: string): boolean {
+  const normalized = host.trim().toLowerCase()
+  return normalized === '127.0.0.1' || normalized === 'localhost' || normalized === '::1'
+}
+
+function printWslLanAccessHint(boundHost: string): void {
+  if (!isLikelyWsl() || !isLoopbackHost(boundHost)) {
+    return
+  }
+  const port = KORA_DAEMON_PORT
+  console.log('')
+  console.log(
+    `[daemon] WSL detected and daemon host is ${boundHost}. This is localhost-only; phones cannot connect.`,
+  )
+  console.log('[daemon] For LAN access, run these in Windows PowerShell as Administrator:')
+  console.log(`  $wslIp = ((wsl hostname -I).Trim() -split '\\s+')[0]`)
+  console.log(
+    `  netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=${port} connectaddress=$wslIp connectport=${port}`,
+  )
+  console.log(
+    `  netsh advfirewall firewall add rule name="Kora Daemon ${port}" dir=in action=allow protocol=TCP localport=${port}`,
+  )
+  console.log('')
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
@@ -71,7 +109,9 @@ function startDetachedWorker(): number {
 function formatStateSummary(state: StoredDaemonState): string {
   const startedAt = new Date(state.startedAt)
   const startedAtSummary = Number.isNaN(startedAt.getTime()) ? 'unknown' : startedAt.toISOString()
-  const endpoint = getDaemonBaseUrl(state.port ?? KORA_DAEMON_PORT)
+  const host = state.host ?? KORA_DAEMON_HOST
+  const connectHost = host === '0.0.0.0' ? '127.0.0.1' : host
+  const endpoint = `http://${connectHost}:${state.port ?? KORA_DAEMON_PORT}`
   return `PID=${state.pid} startedAt=${startedAtSummary} endpoint=${endpoint}`
 }
 
@@ -79,6 +119,7 @@ async function handleStart(): Promise<void> {
   const existing = await readDaemonState()
   if (existing && isPidAlive(existing.pid)) {
     console.log(`Daemon already running (${formatStateSummary(existing)}).`)
+    printWslLanAccessHint(existing.host ?? KORA_DAEMON_HOST)
     return
   }
   if (existing && !isPidAlive(existing.pid)) {
@@ -90,6 +131,7 @@ async function handleStart(): Promise<void> {
     pid,
     startedAt: new Date().toISOString(),
     command: `${process.execPath} ${getScriptPathForWorker()} --daemon-worker supervisor`,
+    host: KORA_DAEMON_HOST,
     port: KORA_DAEMON_PORT,
   }
   await writeDaemonState(state)
@@ -102,6 +144,7 @@ async function handleStart(): Promise<void> {
   }
 
   console.log(`Daemon started. PID ${pid}`)
+  printWslLanAccessHint(KORA_DAEMON_HOST)
 }
 
 async function handleStatus(): Promise<void> {

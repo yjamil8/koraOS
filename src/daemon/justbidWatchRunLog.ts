@@ -1,4 +1,4 @@
-import { appendFile, mkdir } from 'fs/promises'
+import { appendFile, mkdir, readFile } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
 
@@ -21,6 +21,12 @@ export type JustBidWatchRunLogEntry = {
   error: string | null
   pagesConfigured: number
   pagesScanned: number
+  searchEnabled: boolean
+  searchQueriesConfigured: number
+  searchQueriesRun: number
+  searchPagesToScan: number
+  searchPagesScanned: number
+  searchCandidatesCount: number
   scannedCount: number
   unseenCount: number
   detailFetchCount: number
@@ -54,4 +60,48 @@ export async function appendJustBidWatchRunLog(
 ): Promise<void> {
   await ensureKoraHome()
   await appendFile(JUSTBID_WATCH_RUN_LOG_PATH, `${JSON.stringify(entry)}\n`, 'utf8')
+}
+
+export async function readLatestJustBidWatchRunLog(): Promise<JustBidWatchRunLogEntry | null> {
+  try {
+    const content = await readFile(JUSTBID_WATCH_RUN_LOG_PATH, 'utf8')
+    const trimmed = content.trim()
+    if (!trimmed) {
+      return null
+    }
+    const lines = trimmed.split('\n')
+    const lastLine = lines[lines.length - 1]
+    if (!lastLine) {
+      return null
+    }
+    return JSON.parse(lastLine) as JustBidWatchRunLogEntry
+  } catch {
+    return null
+  }
+}
+
+export async function readRecentJustBidWatchRunLogs(
+  limit: number = 10,
+): Promise<JustBidWatchRunLogEntry[]> {
+  const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : 10
+  try {
+    const content = await readFile(JUSTBID_WATCH_RUN_LOG_PATH, 'utf8')
+    const lines = content
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean)
+      .slice(-safeLimit)
+      .reverse()
+    const parsed: JustBidWatchRunLogEntry[] = []
+    for (const line of lines) {
+      try {
+        parsed.push(JSON.parse(line) as JustBidWatchRunLogEntry)
+      } catch {
+        // Skip malformed lines to keep history endpoint robust.
+      }
+    }
+    return parsed
+  } catch {
+    return []
+  }
 }

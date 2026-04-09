@@ -9,6 +9,7 @@ export type StoredDaemonState = {
   pid: number
   startedAt: string
   command: string
+  host?: string
   port?: number
 }
 
@@ -36,6 +37,7 @@ export async function readDaemonState(): Promise<StoredDaemonState | null> {
       startedAt:
         typeof parsed.startedAt === 'string' ? parsed.startedAt : new Date(0).toISOString(),
       command: typeof parsed.command === 'string' ? parsed.command : '',
+      host: typeof parsed.host === 'string' ? parsed.host : undefined,
       port:
         typeof parsed.port === 'number' && Number.isInteger(parsed.port)
           ? parsed.port

@@ -6,7 +6,6 @@ const KORA_HOME = process.env.KORA_HOME || join(homedir(), '.kora')
 const JUSTBID_WATCH_CONFIG_PATH = join(KORA_HOME, 'justbid-watch.json')
 const DEFAULT_ALLOWED_LOCATIONS = [
   '320 Commerce Cir Sacramento, CA',
-  '8425 Belvedere Ave Suite 300 Sacramento, CA',
   '2975 Venture Dr Lincoln, CA',
   '2477 Mercantile Dr Rancho Cordova, CA',
 ]
@@ -18,11 +17,9 @@ export type JustBidWatchRule = {
   keywords: string[]
   excludeKeywords: string[]
   requiredCondition: string[]
-  locations: string[]
   maxCurrentBid: number | null
   maxAllInCost: number | null
   minRetail: number | null
-  notifyOnce: boolean
 }
 
 export type JustBidWatchConfig = {
@@ -30,6 +27,11 @@ export type JustBidWatchConfig = {
   baseUrl: string
   listingPath: string
   pagesToScan: number
+  searchEnabled: boolean
+  searchPagesToScan: number
+  searchSort: string
+  warmStartPending: boolean
+  defaultLocations: string[]
   deepProbeEnabled: boolean
   deepProbeIntervalMs: number
   deepProbePagesToScan: number
@@ -48,6 +50,11 @@ const DEFAULT_JUSTBID_WATCH_CONFIG: JustBidWatchConfig = {
   baseUrl: 'https://www.justbid.com',
   listingPath: '/items?sort=newly_posted',
   pagesToScan: 3,
+  searchEnabled: true,
+  searchPagesToScan: 3,
+  searchSort: 'newly_posted',
+  warmStartPending: false,
+  defaultLocations: DEFAULT_ALLOWED_LOCATIONS,
   deepProbeEnabled: true,
   deepProbeIntervalMs: 60 * 60 * 1000,
   deepProbePagesToScan: 20,
@@ -66,11 +73,9 @@ const DEFAULT_JUSTBID_WATCH_CONFIG: JustBidWatchConfig = {
       keywords: ['airpods max', 'air pods max'],
       excludeKeywords: ['case', 'cover', 'stand', 'replacement', 'ear pad', 'ear cushion'],
       requiredCondition: ['Appears New'],
-      locations: DEFAULT_ALLOWED_LOCATIONS,
       maxCurrentBid: null,
       maxAllInCost: null,
       minRetail: null,
-      notifyOnce: true,
     },
     {
       id: 'la-roche-posay-toleriane-double-repair-face-moisturizer',
@@ -83,11 +88,9 @@ const DEFAULT_JUSTBID_WATCH_CONFIG: JustBidWatchConfig = {
       ],
       excludeKeywords: ['sample', 'travel size'],
       requiredCondition: ['Appears New'],
-      locations: DEFAULT_ALLOWED_LOCATIONS,
       maxCurrentBid: null,
       maxAllInCost: null,
       minRetail: null,
-      notifyOnce: true,
     },
   ],
 }
@@ -129,11 +132,9 @@ function normalizeRule(input: unknown): JustBidWatchRule | null {
     keywords,
     excludeKeywords: normalizeStringArray(typed.excludeKeywords),
     requiredCondition: normalizeStringArray(typed.requiredCondition),
-    locations: normalizeStringArray(typed.locations),
     maxCurrentBid: coerceNullableNumber(typed.maxCurrentBid),
     maxAllInCost: coerceNullableNumber(typed.maxAllInCost),
     minRetail: coerceNullableNumber(typed.minRetail),
-    notifyOnce: typed.notifyOnce !== false,
   }
 }
 
@@ -142,9 +143,28 @@ function normalizeConfig(input: unknown): JustBidWatchConfig {
     return cloneDefaultConfig()
   }
   const typed = input as Record<string, unknown>
-  const watchlists = Array.isArray(typed.watchlists)
-    ? typed.watchlists.map(normalizeRule).filter(Boolean)
-    : []
+  const hasWatchlists = Array.isArray(typed.watchlists)
+  const watchlists = hasWatchlists ? typed.watchlists.map(normalizeRule).filter(Boolean) : []
+  const defaultLocations = Array.isArray(typed.defaultLocations)
+    ? normalizeStringArray(typed.defaultLocations)
+    : (() => {
+        // Legacy config migration: if defaultLocations is absent, hydrate from
+        // per-rule locations (deduped) when available.
+        if (!Array.isArray(typed.watchlists)) {
+          return DEFAULT_JUSTBID_WATCH_CONFIG.defaultLocations
+        }
+        const collected = new Set<string>()
+        for (const rawRule of typed.watchlists) {
+          if (!rawRule || typeof rawRule !== 'object') continue
+          const locations = normalizeStringArray((rawRule as Record<string, unknown>).locations)
+          for (const location of locations) {
+            collected.add(location)
+          }
+        }
+        return collected.size > 0
+          ? Array.from(collected)
+          : DEFAULT_JUSTBID_WATCH_CONFIG.defaultLocations
+      })()
 
   return {
     enabled: typed.enabled !== false,
@@ -159,9 +179,22 @@ function normalizeConfig(input: unknown): JustBidWatchConfig {
     pagesToScan:
       typeof typed.pagesToScan === 'number' &&
       Number.isInteger(typed.pagesToScan) &&
-      typed.pagesToScan > 0
+      typed.pagesToScan >= 0
         ? typed.pagesToScan
         : DEFAULT_JUSTBID_WATCH_CONFIG.pagesToScan,
+    searchEnabled: typed.searchEnabled !== false,
+    searchPagesToScan:
+      typeof typed.searchPagesToScan === 'number' &&
+      Number.isInteger(typed.searchPagesToScan) &&
+      typed.searchPagesToScan >= 1
+        ? typed.searchPagesToScan
+        : DEFAULT_JUSTBID_WATCH_CONFIG.searchPagesToScan,
+    searchSort:
+      typeof typed.searchSort === 'string' && typed.searchSort.trim()
+        ? typed.searchSort.trim()
+        : DEFAULT_JUSTBID_WATCH_CONFIG.searchSort,
+    warmStartPending: typed.warmStartPending === true,
+    defaultLocations,
     deepProbeEnabled: typed.deepProbeEnabled !== false,
     deepProbeIntervalMs:
       typeof typed.deepProbeIntervalMs === 'number' &&
@@ -213,11 +246,14 @@ function normalizeConfig(input: unknown): JustBidWatchConfig {
       typeof typed.taxRate === 'number' && Number.isFinite(typed.taxRate) && typed.taxRate >= 0
         ? typed.taxRate
         : DEFAULT_JUSTBID_WATCH_CONFIG.taxRate,
-    watchlists:
-      watchlists.length > 0
-        ? (watchlists as JustBidWatchRule[])
-        : cloneDefaultConfig().watchlists,
+    watchlists: hasWatchlists
+      ? (watchlists as JustBidWatchRule[])
+      : cloneDefaultConfig().watchlists,
   }
+}
+
+export function normalizeJustBidWatchConfig(input: unknown): JustBidWatchConfig {
+  return normalizeConfig(input)
 }
 
 async function ensureKoraHome(): Promise<void> {

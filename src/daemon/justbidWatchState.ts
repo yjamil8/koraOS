@@ -66,7 +66,10 @@ function coerceIso(value: unknown): string | null {
   return date.toISOString()
 }
 
-function normalizeStringMap(value: unknown): Record<string, string> {
+function normalizeStringMap(
+  value: unknown,
+  maxItems: number = MAX_TRACKED_ITEMS,
+): Record<string, string> {
   if (!value || typeof value !== 'object') {
     return {}
   }
@@ -74,7 +77,7 @@ function normalizeStringMap(value: unknown): Record<string, string> {
   const entries = Object.entries(map)
     .filter(([key, timestamp]) => Boolean(key) && typeof timestamp === 'string')
     .sort((a, b) => Date.parse(b[1] as string) - Date.parse(a[1] as string))
-    .slice(0, MAX_TRACKED_ITEMS)
+    .slice(0, maxItems)
   return Object.fromEntries(entries) as Record<string, string>
 }
 
@@ -125,8 +128,10 @@ function normalizeState(input: unknown): JustBidWatchState {
       typed.lastDeepProbeUnseenBeyondBaseline >= 0
         ? Math.floor(typed.lastDeepProbeUnseenBeyondBaseline)
         : 0,
-    seen: normalizeStringMap(typed.seen),
-    notified: normalizeStringMap(typed.notified),
+    seen: normalizeStringMap(typed.seen, MAX_TRACKED_ITEMS),
+    // Do not trim notified history at read-time; this enforces global
+    // never-notify-again semantics across long-running use.
+    notified: normalizeStringMap(typed.notified, Number.MAX_SAFE_INTEGER),
     lastScannedCount:
       typeof typed.lastScannedCount === 'number' &&
       Number.isFinite(typed.lastScannedCount) &&
@@ -177,7 +182,8 @@ export function trimStateMaps(
   return {
     ...state,
     seen: trimMap(state.seen),
-    notified: trimMap(state.notified),
+    // Keep full notified history for global de-duplication.
+    notified: state.notified,
   }
 }
 

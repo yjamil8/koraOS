@@ -18,7 +18,7 @@ async function runSupervisorWorker(): Promise<void> {
   await justBidWatcher.initialize()
   loopController.start()
   justBidWatcher.start()
-  const httpServer = startDaemonHttpServer({ loopController })
+  const httpServer = startDaemonHttpServer({ loopController, justBidWatcher })
   let shuttingDown = false
   let resolveShutdown: (() => void) | null = null
   const syncInterval = setInterval(() => {

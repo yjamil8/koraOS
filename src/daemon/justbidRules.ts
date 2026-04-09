@@ -14,6 +14,7 @@ export type CostParams = {
   buyerPremiumRate: number
   lotFee: number
   taxRate?: number
+  defaultLocations?: string[]
 }
 
 export type WatchMatchResult = {
@@ -87,9 +88,10 @@ export function matchWatchlistRule(
     return { match: false, allInCost, reasons }
   }
 
-  if (rule.locations.length > 0) {
+  const expectedLocations = params.defaultLocations ?? []
+  if (expectedLocations.length > 0) {
     const location = normalizeLocation(item.location)
-    const locationMatches = rule.locations.some(expected => {
+    const locationMatches = expectedLocations.some(expected => {
       const expectedLocation = normalizeLocation(expected)
       return (
         location.includes(expectedLocation) || expectedLocation.includes(location)

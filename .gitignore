@@ -1,2 +1,4 @@
 *:Zone.Identifier
 node_modules/
+
+.mcp.json.codex-smoke

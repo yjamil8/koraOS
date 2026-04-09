@@ -69,14 +69,17 @@ bun run /home/yousuf/dev/koraOS/src/entrypoints/cli.tsx -- "$@"
 
 ## Local Model Backend
 
-Kora is currently wired to LM Studio OpenAI-compatible API:
+Kora resolves LM Studio base URL in this order:
 
-- `http://192.168.1.200:1234`
+- `KORA_LM_STUDIO_BASE_URL` (explicit override)
+- Linux default gateway at `:1234`
+- `http://127.0.0.1:1234` fallback
 
-If endpoint changes, update:
+Set an explicit override when needed:
 
-- `src/main.tsx`
-- `src/services/api/client.ts`
+```bash
+export KORA_LM_STUDIO_BASE_URL="http://10.0.0.78:1234"
+```
 
 ## Telegram Push Tool
 

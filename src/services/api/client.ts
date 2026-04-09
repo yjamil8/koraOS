@@ -28,13 +28,13 @@ import {
   getVertexRegionForModel,
   isEnvTruthy,
 } from '../../utils/envUtils.js'
-
-const LOCAL_LM_STUDIO_BASE_URL = 'http://192.168.1.200:1234'
+import { resolveDefaultAnthropicBaseUrl } from '../../utils/lmStudioBaseUrl.js'
 
 // Keep provider/base-url feature checks consistent with the hardcoded local client.
 if (!process.env.ANTHROPIC_BASE_URL) {
-  process.env.ANTHROPIC_BASE_URL = LOCAL_LM_STUDIO_BASE_URL
+  process.env.ANTHROPIC_BASE_URL = resolveDefaultAnthropicBaseUrl()
 }
+const DEFAULT_LOCAL_BASE_URL = resolveDefaultAnthropicBaseUrl()
 
 /**
  * Environment variables for different client types:
@@ -307,7 +307,7 @@ export async function getAnthropicClient({
   return new Anthropic({
     apiKey: apiKey || 'local',
     authToken: undefined,
-    baseURL: LOCAL_LM_STUDIO_BASE_URL,
+    baseURL: DEFAULT_LOCAL_BASE_URL,
     ...ARGS,
     ...(isDebugToStdErr() && { logger: createStderrLogger() }),
   })

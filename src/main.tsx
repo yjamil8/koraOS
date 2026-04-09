@@ -197,6 +197,7 @@ import { filterAllowedSdkBetas } from './utils/betas.js';
 import { isInBundledMode, isRunningWithBun } from './utils/bundledMode.js';
 import { logForDiagnosticsNoPII } from './utils/diagLogs.js';
 import { filterExistingPaths, getKnownPathsForRepo } from './utils/githubRepoPathMapping.js';
+import { resolveDefaultAnthropicBaseUrl } from './utils/lmStudioBaseUrl.js';
 import { clearPluginCache, loadAllPluginsCacheOnly } from './utils/plugins/pluginLoader.js';
 import { migrateChangelogFromConfig } from './utils/releaseNotes.js';
 import { SandboxManager } from './utils/sandbox/sandbox-adapter.js';
@@ -205,13 +206,13 @@ import { checkOutTeleportedSessionBranch, processMessagesForTeleportResume, tele
 import { shouldEnableThinkingByDefault, type ThinkingConfig } from './utils/thinking.js';
 import { initUser, resetUserCache } from './utils/user.js';
 import { getTmuxInstallInstructions, isTmuxAvailable, parsePRReference } from './utils/worktree.js';
+import { isFirstPartyAnthropicBaseUrl } from './utils/model/providers.js';
 
 // eslint-disable-next-line custom-rules/no-top-level-side-effects
 profileCheckpoint('main_tsx_imports_loaded');
 
-const LOCAL_LM_STUDIO_BASE_URL = 'http://192.168.1.200:1234';
 if (!process.env.ANTHROPIC_BASE_URL) {
-  process.env.ANTHROPIC_BASE_URL = LOCAL_LM_STUDIO_BASE_URL;
+  process.env.ANTHROPIC_BASE_URL = resolveDefaultAnthropicBaseUrl();
 }
 
 const RUNTIME_MACRO = typeof MACRO !== 'undefined' ? MACRO : {
@@ -1904,6 +1905,11 @@ async function run(): Promise<CommanderCommand> {
     // The later REPL-path maybeActivateProactive() calls are idempotent.
     maybeActivateProactive(options);
     let tools = getTools(toolPermissionContext);
+    const useToollessLocalMode = !isFirstPartyAnthropicBaseUrl(process.env.ANTHROPIC_BASE_URL ?? '') && !isEnvTruthy(process.env.KORA_FORCE_TOOLS);
+    if (useToollessLocalMode) {
+      tools = [];
+      logForDebugging('[LOCAL MODEL] Disabling tools by default for non-first-party Anthropic-compatible endpoints. Set KORA_FORCE_TOOLS=true to override.');
+    }
 
     // Apply coordinator mode tool filtering for headless path
     // (mirrors useMergedTools.ts filtering for REPL/interactive path)

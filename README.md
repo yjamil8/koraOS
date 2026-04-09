@@ -36,13 +36,17 @@ bun run src/entrypoints/cli.tsx --
 
 Kora uses a local OpenAI-compatible endpoint for model calls.
 
-- Current hardcoded base URL: `http://192.168.1.200:1234`
+- Default resolution order:
+  - `KORA_LM_STUDIO_BASE_URL` (explicit override)
+  - Linux default gateway at port `1234`
+  - `http://127.0.0.1:1234` fallback
 - Model picker reads available models from LM Studio and persists last selected model.
 
-If you move the LM Studio server, update:
+Recommended explicit override:
 
-- `src/main.tsx`
-- `src/services/api/client.ts`
+```bash
+export KORA_LM_STUDIO_BASE_URL="http://10.0.0.78:1234"
+```
 
 ## Daemon + Sessions
 

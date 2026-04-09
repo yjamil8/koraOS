@@ -152,16 +152,16 @@ export function startDaemonHttpServer(
   <title>JustBid Run History</title>
   <style>
     :root {
-      --bg: #070a12;
-      --bg-grad-a: rgba(36, 189, 143, 0.20);
-      --bg-grad-b: rgba(45, 128, 255, 0.22);
-      --card: rgba(14, 20, 35, 0.78);
-      --line: rgba(154, 178, 255, 0.20);
-      --text: #eaf2ff;
-      --muted: #9fb3d4;
-      --good: #44d08a;
-      --bad: #ff6f86;
-      --warn: #f8be64;
+      --bg: #050506;
+      --bg-grad-a: rgba(255, 255, 255, 0.04);
+      --bg-grad-b: rgba(255, 255, 255, 0.03);
+      --card: rgba(18, 18, 20, 0.86);
+      --line: rgba(255, 255, 255, 0.14);
+      --text: #f4f4f5;
+      --muted: #a1a1aa;
+      --good: #4ade80;
+      --bad: #fb7185;
+      --warn: #fbbf24;
     }
     * { box-sizing: border-box; }
     body {
@@ -169,9 +169,9 @@ export function startDaemonHttpServer(
       font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
       color: var(--text);
       background:
-        radial-gradient(circle at 0% 0%, var(--bg-grad-b), transparent 28%),
-        radial-gradient(circle at 100% 0%, var(--bg-grad-a), transparent 30%),
-        linear-gradient(145deg, var(--bg), #0b1427);
+        radial-gradient(circle at 10% 0%, var(--bg-grad-b), transparent 28%),
+        radial-gradient(circle at 90% 0%, var(--bg-grad-a), transparent 30%),
+        linear-gradient(145deg, var(--bg), #0d0d10);
       min-height: 100vh;
       padding: 18px;
     }
@@ -191,7 +191,7 @@ export function startDaemonHttpServer(
       border: 1px solid var(--line);
       border-radius: 10px;
       padding: 8px 12px;
-      background: rgba(22, 31, 54, 0.92);
+      background: rgba(28, 28, 31, 0.92);
       font: inherit;
       color: inherit;
       text-decoration: none;
@@ -202,7 +202,7 @@ export function startDaemonHttpServer(
       box-shadow: 0 10px 20px rgba(0, 0, 0, 0.26);
     }
     button.primary {
-      background: linear-gradient(140deg, #20c287, #2f7dff);
+      background: linear-gradient(140deg, #2a2b30, #3d3f46);
       color: #fff;
       border-color: transparent;
     }
@@ -214,7 +214,7 @@ export function startDaemonHttpServer(
       font-size: 12px;
       border-radius: 12px;
       overflow: hidden;
-      background: rgba(10, 16, 29, 0.56);
+      background: rgba(13, 13, 16, 0.74);
     }
     th, td { padding: 8px 7px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
     th { color: var(--muted); font-weight: 600; }
@@ -341,16 +341,16 @@ export function startDaemonHttpServer(
   <title>JustBid Watch Manager</title>
   <style>
     :root {
-      --bg-a: #080c16;
-      --bg-b: #0f172b;
-      --card: rgba(14, 21, 36, 0.78);
-      --text: #eaf2ff;
-      --muted: #a5b8d8;
-      --line: rgba(158, 182, 255, 0.20);
-      --brand: #1ec08a;
-      --brand-2: #357cf6;
-      --danger: #ff6f86;
-      --ok: #4bd08f;
+      --bg-a: #050506;
+      --bg-b: #0d0d10;
+      --card: rgba(18, 18, 20, 0.84);
+      --text: #f4f4f5;
+      --muted: #a1a1aa;
+      --line: rgba(255, 255, 255, 0.14);
+      --brand: #2b2c31;
+      --brand-2: #3d3f46;
+      --danger: #fb7185;
+      --ok: #4ade80;
       --shadow: 0 18px 38px rgba(0, 0, 0, 0.38);
       --radius: 14px;
     }
@@ -360,8 +360,8 @@ export function startDaemonHttpServer(
       color: var(--text);
       font-family: "IBM Plex Sans", "Segoe UI", "Avenir Next", system-ui, sans-serif;
       background:
-        radial-gradient(circle at 8% 10%, rgba(53, 124, 246, 0.28), transparent 26%),
-        radial-gradient(circle at 100% 0%, rgba(30, 192, 138, 0.23), transparent 30%),
+        radial-gradient(circle at 8% 10%, rgba(255, 255, 255, 0.04), transparent 24%),
+        radial-gradient(circle at 100% 0%, rgba(255, 255, 255, 0.03), transparent 28%),
         linear-gradient(130deg, var(--bg-a), var(--bg-b));
       min-height: 100vh;
       padding: 18px;
@@ -372,7 +372,7 @@ export function startDaemonHttpServer(
       border-radius: calc(var(--radius) + 4px);
       box-shadow: var(--shadow);
       padding: 18px;
-      background: linear-gradient(118deg, rgba(25, 34, 56, 0.92), rgba(13, 23, 39, 0.88));
+      background: linear-gradient(118deg, rgba(23, 23, 26, 0.92), rgba(12, 12, 14, 0.88));
     }
     .hero h1 { margin: 0; font-size: 26px; letter-spacing: 0.01em; }
     .hero p { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
@@ -405,7 +405,7 @@ export function startDaemonHttpServer(
       font: inherit;
       color: inherit;
       padding: 9px 10px;
-      background: rgba(10, 16, 29, 0.72);
+      background: rgba(13, 13, 16, 0.74);
     }
     textarea { min-height: 80px; resize: vertical; }
     .checkbox { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 10px; }
@@ -416,7 +416,7 @@ export function startDaemonHttpServer(
       padding: 8px 12px;
       font: inherit;
       font-size: 13px;
-      background: rgba(21, 32, 55, 0.94);
+      background: rgba(28, 28, 31, 0.92);
       color: inherit;
       cursor: pointer;
       transition: transform .12s ease, box-shadow .16s ease, background .16s ease;
@@ -428,9 +428,9 @@ export function startDaemonHttpServer(
       border-color: transparent;
     }
     button.warn {
-      background: rgba(255, 111, 134, 0.12);
+      background: rgba(251, 113, 133, 0.12);
       color: var(--danger);
-      border-color: rgba(255, 111, 134, 0.35);
+      border-color: rgba(251, 113, 133, 0.35);
     }
     a.link-btn {
       border: 1px solid var(--line);
@@ -438,7 +438,7 @@ export function startDaemonHttpServer(
       padding: 8px 12px;
       font: inherit;
       font-size: 13px;
-      background: rgba(21, 32, 55, 0.94);
+      background: rgba(28, 28, 31, 0.92);
       color: inherit;
       text-decoration: none;
       display: inline-flex;
@@ -451,8 +451,8 @@ export function startDaemonHttpServer(
       align-items: center;
       gap: 6px;
       border-radius: 999px;
-      border: 1px solid rgba(30, 192, 138, 0.32);
-      background: rgba(30, 192, 138, 0.14);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.08);
       padding: 5px 9px;
       font-size: 12px;
     }
@@ -460,7 +460,7 @@ export function startDaemonHttpServer(
       border: none;
       background: transparent;
       padding: 0;
-      color: #84efc2;
+      color: #d4d4d8;
       font-size: 14px;
       line-height: 1;
     }
@@ -469,7 +469,7 @@ export function startDaemonHttpServer(
       border: 1px solid var(--line);
       border-radius: 12px;
       padding: 0;
-      background: rgba(12, 19, 33, 0.75);
+      background: rgba(13, 13, 16, 0.74);
     }
     .rule-summary {
       padding: 10px;
@@ -501,7 +501,7 @@ export function startDaemonHttpServer(
       word-break: break-word;
       border-radius: 10px;
       border: 1px solid var(--line);
-      background: rgba(10, 16, 29, 0.72);
+      background: rgba(13, 13, 16, 0.74);
       padding: 10px;
       margin: 0;
       font-size: 12px;
